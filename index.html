@@ -1,0 +1,235 @@
+<!DOCTYPE html><html lang="da"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Slik-Arenaen</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Nunito:wght@400;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css"></head><body><div class="app">
+<div class="topbar"><div class="logo">🍬 <em>Slik-Arenaen</em></div>
+<span class="season" id="seasonLbl">Sæson 1</span>
+<span class="sync local" id="syncBadge">●</span>
+<span style="flex:1"></span>
+<button class="me" id="meBtn" onclick="openWho()"></button></div>
+<div class="nav" id="nav">
+<button data-v="hq" onclick="go('hq')">🏠 Hovedkvarter</button>
+<button data-v="games" onclick="go('games')">🎮 Spillehallen</button>
+<button data-v="board" onclick="go('board')">🏆 Rangliste</button>
+<button data-v="shop" onclick="go('shop')">🏪 Kiosken</button>
+<button data-v="tal" onclick="go('tal')">📝 Mine tal</button>
+<span class="sep"></span>
+<button data-v="admin" id="navAdmin" onclick="go('admin')">⚙️ Admin</button></div>
+<div class="page" id="v-hq"><div class="stats" id="hqStats"></div>
+<div class="mybar" id="hqMe"></div><div class="grid2">
+<div class="card"><h2>Holdet — klik dit navn</h2><div class="plist" id="hqList"></div></div>
+<div><div class="card"><h3>Sådan virker det</h3>
+<div class="shop" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr))">
+<div class="item"><div class="ic">🪙</div><b>1. Tjen mønter</b><p>Tast dine tal ind under »Mine tal«. Oskar godkender, og mønterne lander.</p></div>
+<div class="item"><div class="ic">🎮</div><b>2. Brug dem i Spillehallen</b><p>Hver tur koster én mønt — uanset hvilket spil du vælger.</p></div>
+<div class="item"><div class="ic">⭐</div><b>3. Vind point</b><p>Spillene giver point. Point er det eneste, der tæller på ranglisten.</p></div>
+<div class="item"><div class="ic">🏪</div><b>4. Handl i Kiosken</b><p>Veksl point til Oreo, slik, sodavand og meget mere.</p></div>
+</div><div class="rules">
+<div class="rule">💰 Hvert salg <b>1 mønt</b></div>
+<div class="rule">⭐ Hver 2. CSAT på 5 <b>1 mønt</b></div>
+<div class="rule">🎯 Dag med KPT over 6,8 <b>1 mønt</b></div>
+<div class="rule">⏱️ Wrap up under 60 sek <b>1 mønt</b></div>
+<div class="rule">📊 Conformance over 80 % <b>1 mønt</b></div>
+<div class="rule">🔥 3 dage i streak <b>+2 mønter</b></div>
+</div></div><div class="card" style="margin-top:16px"><h2>Seneste aktivitet</h2>
+<div class="log" id="hqLog"></div></div></div></div></div>
+<div class="page" id="v-tal" hidden><div class="mybar" id="talMe"></div>
+<div class="grid2"><div class="card"><h3>📝 Tast dine tal ind</h3>
+<p class="hint" style="margin:0 0 14px">Udfyld det, du har i dag. Oskar godkender, og så lander mønterne på din konto.</p>
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
+<label style="font:800 13.5px Nunito;flex:1">💰 Antal salg</label>
+<input type="number" min="0"  id="mySalg" placeholder="fx 2" oninput="calcMine()" style="width:110px;background:#fffaf3;border:2px solid var(--line);border-radius:11px;padding:8px;font:900 14px Nunito;text-align:center;color:var(--ink)"></div>
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
+<label style="font:800 13.5px Nunito;flex:1">⭐ CSAT på 5</label>
+<input type="number" min="0"  id="myCsat" placeholder="fx 5" oninput="calcMine()" style="width:110px;background:#fffaf3;border:2px solid var(--line);border-radius:11px;padding:8px;font:900 14px Nunito;text-align:center;color:var(--ink)"></div>
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
+<label style="font:800 13.5px Nunito;flex:1">🎯 KPT</label>
+<input type="number" min="0" step="0.01" id="myKpt" placeholder="fx 7,02" oninput="calcMine()" style="width:110px;background:#fffaf3;border:2px solid var(--line);border-radius:11px;padding:8px;font:900 14px Nunito;text-align:center;color:var(--ink)"></div>
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
+<label style="font:800 13.5px Nunito;flex:1">⏱️ Wrap up (sek)</label>
+<input type="number" min="0"  id="myWrap" placeholder="fx 52" oninput="calcMine()" style="width:110px;background:#fffaf3;border:2px solid var(--line);border-radius:11px;padding:8px;font:900 14px Nunito;text-align:center;color:var(--ink)"></div>
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
+<label style="font:800 13.5px Nunito;flex:1">📊 Conformance (%)</label>
+<input type="number" min="0" max="100" step="0.1" id="myConf" placeholder="fx 85" oninput="calcMine()" style="width:110px;background:#fffaf3;border:2px solid var(--line);border-radius:11px;padding:8px;font:900 14px Nunito;text-align:center;color:var(--ink)"></div>
+<div class="mybar" style="margin:14px 0 0"><div><div class="sb">Det giver dig</div>
+<div class="nm"><span id="myCoins">0</span> mønter 🪙</div>
+<div class="sb" id="myDetail"></div></div></div>
+<button class="tapzone" id="sendBtn" onclick="submitMine()">📨 Send til godkendelse</button>
+<div id="myStatus"></div></div>
+<div><div class="card"><h3>Sådan regnes mønterne</h3><div class="rules" style="margin:0;border:none;padding:0">
+<div class="rule">💰 Hvert salg <b>1 mønt</b></div>
+<div class="rule">⭐ Hver 2. CSAT på 5 <b>1 mønt</b></div>
+<div class="rule">🎯 KPT over 6,8 <b>1 mønt</b></div>
+<div class="rule">⏱️ Wrap up under 60 sek <b>1 mønt</b></div>
+<div class="rule">📊 Conformance over 80 % <b>1 mønt</b></div>
+<div class="rule">🔥 3 dage i streak <b>+2 mønter</b></div>
+</div><p class="hint">Har du tastet forkert? Send bare igen — den nyeste indsendelse erstatter den gamle, så længe Oskar ikke har godkendt.</p>
+<button class="ghost" style="width:100%;margin-top:12px" onclick="go('games')">→ Til Spillehallen</button></div></div></div></div>
+<div class="page" id="v-games" hidden><div class="mybar" id="gamesMe"></div>
+<div class="lockbar" id="lockBanner" style="display:none"></div>
+<div class="card"><h3>🎮 Spillehallen</h3>
+<p class="hint" style="margin:0 0 14px">Hvert spil koster én mønt. Vælg selv hvad du vil bruge dine mønter på.</p>
+<div class="hub" id="hub"></div></div></div>
+<div class="page" id="v-mine" hidden><div class="mybar" id="mineMe"></div><div class="grid2">
+<div class="card"><h2>Stilling</h2><div class="plist" id="mineList"></div>
+<button class="ghost" style="width:100%;margin-top:10px" onclick="go('games')">← Spillehallen</button>
+<div class="rules">
+<div class="rule">🍬 Slik <b>+2</b></div>
+<div class="rule">⭐ Point <b>+3 / +5</b></div>
+<div class="rule">🏆 Jackpot <b>+14</b></div>
+<div class="rule">🛡️ Skjold <b>redder dig</b></div>
+<div class="rule">💥 Bombe <b>−3 / −6</b></div>
+<div class="rule">🎡 Hjul <b>gratis spin</b></div>
+</div></div><div class="fieldwrap"><div class="stats" id="mineStats"></div>
+<div class="prog"><i id="pbar"></i><b id="ptxt"></b></div><div class="grid" id="grid"></div>
+<div class="legend"><i>🍬 Slik</i><i>⭐ Point</i><i>🏆 Jackpot</i>
+<i>🛡️ Skjold</i><i>💥 Bombe</i><i>🎡 Hjul</i><i>▫️ Tomt</i>
+</div></div></div></div>
+<div class="page" id="v-tetris" hidden><div class="mybar" id="tetrisMe"></div>
+<div class="gamewrap"><div class="arena a4">
+<div class="sbar">
+<div class="sbox"><b id="tLines">0</b><span>rækker</span></div>
+<div class="sbox"><b id="tScore">0</b><span>point i spil</span></div>
+<div class="sbox"><b id="tBest">0</b><span>rekord</span></div>
+<div class="sbox"><b id="tPlayer">–</b><span>spiller</span></div>
+</div>
+<canvas id="tetrisC" width="260" height="468"></canvas>
+<div class="overlay" id="tOver"><h3 id="tTitle">🧱 Tetris</h3><p id="tText">Ryd rækker og saml point. Fire rækker på én gang giver 12 point. Styr med pile eller WASD — mellemrum slipper brikken.</p>
+<button class="big" id="tBtn" onclick="tetrisStart()">Start — 1 mønt</button></div>
+
+</div><div>
+<div class="card"><h2>Stilling</h2><div class="plist" id="tetrisList"></div></div>
+<div class="card" style="margin-top:16px"><h2>Næste brik</h2><canvas id="tetrisNext" width="90" height="80" style="display:block;margin:0 auto"></canvas><h2 style="margin-top:14px">Point</h2><div class="rules" style="margin:0;border:none;padding:0"><div class="rule">1 række <b>+1</b></div><div class="rule">2 rækker <b>+3</b></div><div class="rule">3 rækker <b>+6</b></div><div class="rule">4 rækker = TETRIS <b>+12</b></div></div><h2 style="margin-top:14px">Styring</h2><div class="keys"><button onclick="tetMove(-1)">◀</button><button onclick="tetRotate()">↻</button><button onclick="tetMove(1)">▶</button><button onclick="tetSoft()">▼</button><button onclick="tetHard()" style="grid-column:span 2">⬇ Slip</button></div><p class="hint">Pile eller WASD. Mellemrum slipper brikken.</p><button class="ghost" style="width:100%;margin-top:12px" onclick="go('games')">← Spillehallen</button></div>
+</div></div></div>
+<div class="page" id="v-wheel" hidden><div class="mybar" id="wheelMe"></div>
+<div class="gamewrap"><div class="arena ">
+<div class="sbar">
+<div class="sbox"><b id="wSpins">0</b><span>spin i alt</span></div>
+<div class="sbox"><b id="wBest">0</b><span>bedste gevinst</span></div>
+<div class="sbox"><b id="wPlayer">–</b><span>spiller</span></div>
+</div>
+<div class="wheelbox"><canvas id="wheelC" width="540" height="540"></canvas></div>
+<div class="overlay" id="wOver"><h3 id="wTitle">🎡 Lykkehjulet</h3><p id="wText">Ét spin koster én mønt. Hjulet kan give point, slik, et gratis spin — eller en mønt til hele holdet.</p>
+<button class="big" id="wBtn" onclick="wheelSpin()">Drej hjulet — 1 mønt</button></div>
+
+</div><div>
+<div class="card"><h2>Stilling</h2><div class="plist" id="wheelList"></div></div>
+<div class="card" style="margin-top:16px"><h2>Felter på hjulet</h2><div class="rules" style="margin:0;border:none;padding:0" id="wheelLegend"></div><button class="ghost" style="width:100%;margin-top:12px" onclick="go('games')">← Spillehallen</button></div>
+</div></div></div>
+<div class="page" id="v-shoot" hidden><div class="mybar" id="shootMe"></div>
+<div class="gamewrap"><div class="arena a2">
+<div class="sbar">
+<div class="sbox"><b id="hHits">0</b><span>ramt</span></div>
+<div class="sbox"><b id="hMiss">0</b><span>forbier</span></div>
+<div class="sbox"><b id="hTime">20</b><span>sekunder</span></div>
+<div class="sbox"><b id="hBest">0</b><span>rekord</span></div>
+<div class="sbox"><b id="hPlayer">–</b><span>spiller</span></div>
+</div>
+<canvas id="shootC" width="720" height="440"></canvas>
+<div class="overlay" id="hOver"><h3 id="hTitle">🎯 Skydeteltet</h3><p id="hText">20 sekunder. Klik slikket for point — men rammer du en bombe, ryger 3. Målene bliver hurtigere undervejs.</p>
+<button class="big" id="hBtn" onclick="shootStart()">Start — 1 mønt</button></div>
+
+</div><div>
+<div class="card"><h2>Stilling</h2><div class="plist" id="shootList"></div></div>
+<div class="card" style="margin-top:16px"><h2>Ramt</h2><div class="rules" style="margin:0;border:none;padding:0"><div class="rule">🍬 Slik <b>+1</b></div><div class="rule">🧁 Cupcake <b>+2</b></div><div class="rule">🍭 Guldslik <b>+3</b></div><div class="rule">💣 Bombe <b>−3</b></div></div><p class="hint">Din score deles med 3 til sidst.</p><button class="ghost" style="width:100%;margin-top:12px" onclick="go('games')">← Spillehallen</button></div>
+</div></div></div>
+<div class="page" id="v-stack" hidden><div class="mybar" id="stackMe"></div>
+<div class="gamewrap"><div class="arena a3">
+<div class="sbar">
+<div class="sbox"><b id="kFloor">0</b><span>etager</span></div>
+<div class="sbox"><b id="kPts">0</b><span>point i spil</span></div>
+<div class="sbox"><b id="kBest">0</b><span>rekord</span></div>
+<div class="sbox"><b id="kPlayer">–</b><span>spiller</span></div>
+</div>
+<canvas id="stackC" width="720" height="460"></canvas>
+<div class="overlay" id="kOver"><h3 id="kTitle">🏗️ Stabelspillet</h3><p id="kText">Blokken glider frem og tilbage. Klik for at sætte den. Rammer du præcist, beholder du fuld bredde — ellers bliver tårnet smallere.</p>
+<button class="big" id="kBtn" onclick="stackStart()">Start — 1 mønt</button></div>
+<button class="tapzone" id="kTap" onclick="stackDrop()" disabled>SÆT BLOKKEN (mellemrum)</button>
+</div><div>
+<div class="card"><h2>Stilling</h2><div class="plist" id="stackList"></div></div>
+<div class="card" style="margin-top:16px"><h2>Point</h2><div class="rules" style="margin:0;border:none;padding:0"><div class="rule">🧱 Hver etage <b>+0,4</b></div><div class="rule">✨ Hver 5. etage <b>+1 bonus</b></div></div><p class="hint">Du beholder altid dine point — her kan intet tabes.</p><button class="ghost" style="width:100%;margin-top:12px" onclick="go('games')">← Spillehallen</button></div>
+</div></div></div>
+<div class="page" id="v-dig" hidden><div class="mybar" id="digMe"></div>
+<div class="gamewrap"><div class="arena a3">
+<div class="sbar">
+<div class="sbox"><b id="gDepth">0</b><span>dybde</span></div>
+<div class="sbox"><b id="gPot">0</b><span>i puljen</span></div>
+<div class="sbox"><b id="gBest">0</b><span>rekord</span></div>
+<div class="sbox"><b id="gPlayer">–</b><span>spiller</span></div>
+</div>
+<div class="layers" id="gLayers"></div>
+<div class="overlay" id="gOver"><h3 id="gTitle">⛏️ Guldgraveren</h3><p id="gText">Grav dybere gennem ni lag for mere værdi — men risikoen for sammenstyrtning stiger. Kommer du op i tide, beholder du puljen. Styrter skakten, mister du alt.</p>
+<button class="big" id="gBtn" onclick="digStart()">Start — 1 mønt</button></div>
+<div style="display:flex;gap:10px;margin-top:12px"><button class="tapzone" id="gDig" style="margin:0" onclick="digDeeper()" disabled>⛏️ Grav videre</button><button class="tapzone grn" id="gCash" style="margin:0" onclick="digCash()" disabled>🩣 Kom op</button></div>
+</div><div>
+<div class="card"><h2>Stilling</h2><div class="plist" id="digList"></div></div>
+<div class="card" style="margin-top:16px"><h2>Sådan spilles</h2><p class="hint" style="margin:0">Hvert lag giver flere point end det forrige, men også større risiko. Du kan stoppe når som helst og tage puljen med op.</p><button class="ghost" style="width:100%;margin-top:12px" onclick="go('games')">← Spillehallen</button></div>
+</div></div></div>
+<div class="page" id="v-board" hidden><div class="podium" id="podium"></div>
+<div class="card" style="margin-top:16px"><h2>Stilling — <span id="seasonLbl2">Sæson 1</span></h2>
+<div class="lb" id="lb"></div></div>
+<div class="card" style="margin-top:16px"><h2>Badges der kan vindes</h2>
+<div class="shop" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))" id="badgeInfo"></div></div></div>
+<div class="page" id="v-shop" hidden><div class="mybar" id="shopMe"></div>
+<div class="card" style="margin-bottom:16px"><h3>🏪 Kiosken</h3>
+<p class="hint" style="margin:0">Her betaler du med <b>point</b>. Køb trækker ikke fra din placering på ranglisten.</p></div>
+<div class="shop" id="shop"></div></div>
+<div class="page" id="v-admin" hidden>
+<div class="card"><h3>⚙️ Admin</h3><p class="hint" style="margin:0" id="adminWho"></p></div>
+<div class="card" id="adminGate" style="margin-top:16px"><div class="gatebox">
+<div class="lockic">🔒</div><h3>Området er låst</h3>
+<p>Kun Oskar har adgang. Indtast koden for at fortsætte.</p>
+<button class="big" id="gateBtn" onclick="openPin()">Indtast kode</button></div></div>
+<div id="adminBody">
+<div class="card" style="margin-top:16px">
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+<h3 style="margin:0">📨 Venter på godkendelse</h3>
+<span class="pcoins" id="pendCount">Ingen venter</span>
+<button class="big sm grn" id="approveAllBtn" style="margin-left:auto" onclick="approveAll()">✅ Godkend alle</button></div>
+<p class="hint" style="margin:8px 0 14px">Medarbejderne taster selv ind under »Mine tal«. Du godkender her — så får de mønterne.</p>
+<div id="pendList"></div></div>
+<div class="card" style="margin-top:16px"><h3>✏️ Tast ind manuelt</h3>
+<p class="hint" style="margin:0 0 14px">Hvis du hellere vil taste for hele holdet selv. Det går direkte igennem uden godkendelse.</p>
+<table class="tbl"><thead><tr><th></th><th>Medarbejder</th><th>Salg</th><th>CSAT 5⭐</th>
+<th>KPT</th><th>Wrap (sek)</th><th>Conf %</th><th>Mønter</th><th>Beholdning</th></tr></thead>
+<tbody id="adminRows"></tbody></table>
+<div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+<button class="big sm" onclick="payout()">🪙 Udbetal mønter</button>
+<button class="ghost" onclick="clearDay()">Ryd felter</button>
+<button class="ghost" onclick="addPlayer()">+ Tilføj deltager</button>
+<button class="ghost warn" onclick="resetField()">↺ Nyt minefelt</button>
+<button class="ghost warn" onclick="newSeason()">🏁 Afslut sæson</button></div>
+<p class="hint" id="payHint"></p></div>
+<div class="card" style="margin-top:16px"><h3>📦 Bestillinger fra Kiosken</h3>
+<p class="hint" style="margin:0 0 12px">Det her skal du købe ind / udlevere.</p>
+<div id="orders"></div>
+<button class="ghost" style="margin-top:12px" onclick="clearOrders()">✅ Udleveret — ryd listen</button></div>
+<div class="card" style="margin-top:16px"><h3>⏳ Pre-launch</h3>
+<p class="hint" style="margin:0" id="lockState"></p>
+<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+<button class="ghost" onclick="openMonday()">⏳ Lås til mandag kl. 8</button>
+<button class="big sm" onclick="openNow()">🎉 Åbn Spillehallen nu</button></div>
+<h3 style="margin-top:20px">🔗 Linket til alle</h3>
+<p class="hint" style="margin:0">Alle bruger det samme link. Første gang vælger man sit eget navn.</p>
+<div class="linkbox"><b id="shareLink"></b>
+<button class="ghost" style="margin-left:auto;white-space:nowrap" onclick="copyLink()">Kopiér</button></div>
+<div style="margin-top:18px;border-top:2px dashed var(--line);padding-top:14px">
+<button class="ghost warn" onclick="logoutAdmin()">🔒 Lås admin igen</button></div></div>
+</div></div>
+</div>
+<div class="modal" id="whoModal" hidden><div class="mbox">
+<h3>Hvem er du?</h3><p class="hint" style="margin:0">Vælg dit navn. Valget huskes på denne enhed.</p>
+<div class="mgrid" id="whoGrid"></div></div></div>
+<div class="modal" id="pinModal" hidden><div class="mbox pin">
+<div class="lockic" style="font-size:44px">🔑</div>
+<h3 style="margin:8px 0 2px">Oskars kode</h3>
+<p class="hint" style="margin:0">Indtast din 4-cifrede kode for at få adgang.</p>
+<input class="pinfield" id="pinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="••••">
+<div class="pinerr" id="pinErr"></div>
+<div style="display:flex;gap:10px">
+<button class="ghost" style="flex:1" onclick="closePin()">Annullér</button>
+<button class="big" style="flex:2" onclick="submitPin()">Lås op</button></div>
+</div></div>
+<div class="toast" id="toast"></div><canvas id="cf"></canvas>
+<script src="core.js"></script><script src="games.js"></script><script src="sync.js"></script>
+</body></html>
