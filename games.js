@@ -16,8 +16,14 @@ function endGame(pts,opt){
         freeSpin:opt.freeSpin,teamCoins:opt.teamCoins,log:opt.log});
 }
 
-/* ===================== TETRIS ===================== */
+/* ===================== TETRIS =====================
+   Kort version til drift: 60 sekunder, hurtigere start,
+   og point er afstemt med de andre spil (ca. 2-4 point pr. mønt). */
 var TCOLS=10, TROWS=18, TCELL=26;
+var TTIME=60;                 /* sekunder pr. spil */
+var TLINEPTS=[0,1,2,4,6];     /* raa score for 1/2/3/4 raekker */
+var TMAXPTS=6;                /* loft pr. spil */
+function tetPoints(){return Math.min(TMAXPTS,Math.round(tet.score/3))}
 var TSHAPES={
   I:{c:"#4cc3f0",r:[[[0,1],[1,1],[2,1],[3,1]],[[2,0],[2,1],[2,2],[2,3]]]},
   O:{c:"#f5a623",r:[[[1,0],[2,0],[1,1],[2,1]]]},
@@ -32,7 +38,7 @@ var TSHAPES={
 };
 var TKEYS=["I","O","T","S","Z","J","L"];
 var tet={on:false,grid:[],cur:null,next:null,x:0,y:0,rot:0,
-         lines:0,score:0,speed:640,timer:null,who:0,bag:[]};
+         lines:0,score:0,speed:480,timer:null,clock:null,time:TTIME,who:0,bag:[]};
 
 function tetBag(){
   if(tet.bag.length<2){
@@ -65,7 +71,7 @@ function tetSpawn(){
 function tetrisStart(){
   if(tet.on)return;
   startGame("tetris",false,function(pi){
-    tet.who=pi;tet.on=true;tet.lines=0;tet.score=0;tet.speed=640;tet.bag=[];
+    tet.who=pi;tet.on=true;tet.lines=0;tet.score=0;tet.speed=480;tet.bag=[];tet.time=TTIME;
     tet.grid=[];
     for(var r=0;r<TROWS;r++){var row=[];for(var c=0;c<TCOLS;c++)row.push(null);tet.grid.push(row)}
     tet.next=tetBag();
@@ -73,6 +79,12 @@ function tetrisStart(){
     setTxt("tLines",0);setTxt("tScore",0);
     tetSpawn();tetDraw();
     clearInterval(tet.timer);tet.timer=setInterval(tetStep,tet.speed);
+    clearInterval(tet.clock);
+    tet.clock=setInterval(function(){
+      if(!tet.on)return;
+      tet.time--;tetDraw();
+      if(tet.time<=0)tetrisEnd(false,"Tiden er gået");
+    },1000);
   });
 }
 function tetLock(){
@@ -92,11 +104,11 @@ function tetLock(){
   }
   if(cleared){
     tet.lines+=cleared;
-    tet.score+=[0,1,3,6,12][cleared];
-    setTxt("tLines",tet.lines);setTxt("tScore",tet.score);
-    if(cleared===4){toast("🧱 TETRIS! +12 point","win");burst(120)}
+    tet.score+=TLINEPTS[cleared];
+    setTxt("tLines",tet.lines);setTxt("tScore",tetPoints());
+    if(cleared===4){toast("🧱 TETRIS!","win");burst(120)}
     else toast("✨ "+cleared+(cleared===1?" række":" rækker")+" ryddet","cool");
-    var want=Math.max(190,640-Math.floor(tet.lines/5)*70);
+    var want=Math.max(170,480-Math.floor(tet.lines/3)*60);
     if(want!==tet.speed){tet.speed=want;clearInterval(tet.timer);tet.timer=setInterval(tetStep,tet.speed)}
   }
   tetSpawn();
@@ -156,6 +168,11 @@ function tetDraw(){
     tetCells(tet.cur,tet.rot,tet.x,tet.y).forEach(function(c){
       if(c[1]>=0){trr(cx,c[0]*g+2,c[1]*g+2,g-4,g-4,5)}
     });
+    /* nedtaelling */
+    cx.fillStyle=tet.time<=10?"#f2545b":"rgba(255,255,255,.55)";
+    cx.font="900 15px Nunito, sans-serif";cx.textAlign="right";cx.textBaseline="top";
+    cx.fillText("⏱ "+tet.time+"s",cv.width-8,6);
+    cx.textAlign="left";
   }
   var nv=document.getElementById("tetrisNext");
   if(nv){
@@ -171,15 +188,15 @@ function tetDraw(){
 }
 function tetrisEnd(quiet,reason){
   if(!tet.on)return;
-  tet.on=false;clearInterval(tet.timer);
-  var g=tet.score,l=tet.lines;
+  tet.on=false;clearInterval(tet.timer);clearInterval(tet.clock);
+  var g=tetPoints(),l=tet.lines;
   setTxt("tTitle",reason?"🧱 "+reason:"🧱 Spillet er slut");
   setTxt("tText","Du ryddede "+l+(l===1?" række":" rækker")+" og fik "+g+" point.");
   setTxt("tBtn","Spil igen");
   document.getElementById("tOver").hidden=false;
-  endGame(g,{badge:l>=8?"tetris":null,best:"tetris",score:l,
+  endGame(g,{badge:l>=6?"tetris":null,best:"tetris",score:l,
     log:"spillede 🧱 Tetris: "+l+" rækker, +"+g+" point"});
-  if(!quiet){toast("🧱 Du fik "+g+" point",g>0?"win":"cool");if(l>=8)burst(140)}
+  if(!quiet){toast("🧱 Du fik "+g+" point",g>0?"win":"cool");if(l>=6)burst(140)}
 }
 function drawTetrisPage(){
   myBar("tetrisMe");
@@ -188,6 +205,8 @@ function drawTetrisPage(){
   setTxt("tPlayer",p?p.icon:"–");setTxt("tBest",S.best.tetris||0);
   if(b&&!tet.on){b.disabled=!p||p.coins<1;
     if(b.textContent.indexOf("Spil igen")<0)b.textContent="Start — 1 mønt"}
+  setTxt("tText",tet.on||tet.lines?document.getElementById("tText").textContent:
+    "60 sekunder. Ryd så mange rækker du kan — maks 6 point pr. spil. Pile eller WASD, mellemrum slipper brikken.");
   if(!tet.on&&!tet.grid.length){
     var cv=document.getElementById("tetrisC");
     if(cv){var cx=cv.getContext("2d");cx.fillStyle="#070b1c";cx.fillRect(0,0,cv.width,cv.height)}

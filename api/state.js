@@ -4,7 +4,6 @@
  */
 const KEY = "arena:state";
 
-/* find databasens variabler uanset hvilket prefix (KV_, STORAGE_ osv.) der blev valgt */
 const ENV = process.env;
 const findEnv = (suf) =>
   ENV["KV" + suf] ||
@@ -19,6 +18,17 @@ const COLORS = ["#ffd166","#7ee0b0","#ff9ec7","#8fd0ff","#ffb37a","#c4b5fd","#7f
 const NAMES = ["Oskar","Victoria H.","Nilaus","Anissa","Christoffer","Rafael","Victoria M.",
                "Altin","Amir","Faizan","Angelica"];
 const N = 96;
+
+const DEFAULT_SHOP = [
+  { id: "sodavand", ic: "🥤", n: "Sodavand",    d: "Kold sodavand efter eget valg.",        c: 45,  out: false },
+  { id: "flode",    ic: "🍫", n: "Flødeboller", d: "To stk. flødeboller.",                  c: 60,  out: false },
+  { id: "slik",     ic: "🍬", n: "Slikpose",    d: "Bland selv fra skålen.",                c: 72,  out: false },
+  { id: "energi",   ic: "⚡", n: "Energidrik",  d: "Til den sene eftermiddag.",             c: 85,  out: false },
+  { id: "oreo",     ic: "🍪", n: "Oreo",        d: "Pakke Oreo-kiks fra kiosken.",          c: 100, out: false },
+  { id: "toffee",   ic: "🍮", n: "Toffee Fee",  d: "Håndfuld Toffee Fee — den seje slags.", c: 120, out: false }
+];
+/* Boersen: sell = point man faar for 1 moent, buy = point det koster at koebe 1 moent */
+const DEFAULT_EX = { on: true, sell: 2, buy: 5 };
 
 async function redis(cmd) {
   const r = await fetch(URL_, {
@@ -62,12 +72,21 @@ function mkPlayers(old) {
     icon: o.icon || ICONS[i % ICONS.length]
   }));
 }
-function fresh(old, season) {
+function fresh(old, season, shop, ex) {
   return {
     field: buildField(), players: mkPlayers(old), log: [], last: -1,
     season: season || 1, best: { wheel: 0, shoot: 0, stack: 0, dig: 0, tetris: 0 },
-    spins: 0, openAt: null, pending: []
+    spins: 0, openAt: null, pending: [],
+    shop: shop || JSON.parse(JSON.stringify(DEFAULT_SHOP)),
+    ex: ex || { ...DEFAULT_EX }
   };
+}
+/* saetter nye felter paa en gammel tilstand uden at roere mønter/point */
+function upgrade(s) {
+  if (!s.pending) s.pending = [];
+  if (!Array.isArray(s.shop) || !s.shop.length) s.shop = JSON.parse(JSON.stringify(DEFAULT_SHOP));
+  if (!s.ex) s.ex = { ...DEFAULT_EX };
+  return s;
 }
 function logIt(s, m) { s.log.unshift(m); if (s.log.length > 80) s.log.pop(); }
 function badge(p, k) { if (p.badges.indexOf(k) < 0) p.badges.push(k); }
@@ -103,10 +122,12 @@ function grant(s, pi, r) {
   }
   return n;
 }
+const clean = (v, max) => String(v == null ? "" : v).replace(/[<>]/g, "").trim().slice(0, max);
+const int = (v, lo, hi) => { const n = Math.round(Number(v)); return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo; };
 const DENY = { err: "Forkert kode — kun Oskar har adgang" };
 
 function apply(s, a) {
-  if (!s.pending) s.pending = [];
+  upgrade(s);
   const P = s.players;
   const p = a.pi != null && P[a.pi] ? P[a.pi] : null;
 
@@ -200,13 +221,69 @@ function apply(s, a) {
       (a.rows || []).forEach((r) => { const n = grant(s, r.pi, r); if (n > 0) { tot += n; who++; } });
       return { ok: true, tot, who };
     }
+
+    /* ---------- KIOSK: prisen tages altid fra serverens liste ---------- */
     case "buy": {
       if (!p) return { err: "Ukendt spiller" };
-      if (p.pts < a.cost) return { err: "Ikke nok point" };
-      p.pts -= a.cost; p.bought.push(a.id); badge(p, "shop");
-      logIt(s, `${p.icon} <b>${p.name}</b> købte ${a.ic} ${a.n} for ${a.cost} point`);
+      const it = s.shop.find((x) => x.id === a.id);
+      if (!it) return { err: "Varen findes ikke længere" };
+      if (it.out) return { err: it.n + " er udsolgt" };
+      if (p.pts < it.c) return { err: "Ikke nok point" };
+      p.pts -= it.c; p.bought.push(it.id); badge(p, "shop");
+      logIt(s, `${p.icon} <b>${p.name}</b> købte ${it.ic} ${it.n} for ${it.c} point`);
+      return { ok: true, name: it.n, ic: it.ic };
+    }
+    case "shopSave": {
+      if (!isAdmin(s, a.by, a.pin)) return DENY;
+      const list = Array.isArray(a.items) ? a.items.slice(0, 24) : null;
+      if (!list || !list.length) return { err: "Kiosken skal have mindst én vare" };
+      const used = {};
+      const out = list.map((x, i) => {
+        let id = clean(x.id, 40) || ("v" + Date.now().toString(36) + i);
+        if (used[id]) id = id + "-" + i;
+        used[id] = 1;
+        return {
+          id, ic: clean(x.ic, 8) || "🎁", n: clean(x.n, 30) || "Vare",
+          d: clean(x.d, 90), c: int(x.c, 1, 9999), out: !!x.out
+        };
+      });
+      s.shop = out;
+      logIt(s, "🏪 <b>Kiosken er opdateret</b>");
+      return { ok: true, count: out.length };
+    }
+
+    /* ---------- BØRSEN ---------- */
+    case "exchange": {
+      if (!p) return { err: "Vælg dig selv først" };
+      const ex = s.ex;
+      if (!ex.on) return { err: "Børsen er lukket lige nu" };
+      const n = int(a.n, 1, 50);
+      if (a.dir === "toPts") {
+        if (p.coins < n) return { err: "Du har kun " + p.coins + " mønter" };
+        const g = n * ex.sell;
+        p.coins -= n; addPts(p, g);
+        logIt(s, `📈 <b>${p.name}</b> vekslede ${n} mønt${n > 1 ? "er" : ""} til ${g} point`);
+        return { ok: true, n, g };
+      }
+      if (a.dir === "toCoins") {
+        const cost = n * ex.buy;
+        if (p.pts < cost) return { err: "Det koster " + cost + " point — du har " + p.pts };
+        p.pts -= cost; p.coins += n;
+        logIt(s, `📉 <b>${p.name}</b> købte ${n} mønt${n > 1 ? "er" : ""} for ${cost} point`);
+        return { ok: true, n, cost };
+      }
+      return { err: "Ukendt veksling" };
+    }
+    case "exSave": {
+      if (!isAdmin(s, a.by, a.pin)) return DENY;
+      const sell = int(a.sell, 0, 50), buy = int(a.buy, 1, 500);
+      if (buy <= sell) return { err: "Købsprisen skal være højere end salgsprisen — ellers kan man lave point ud af ingenting" };
+      s.ex = { on: !!a.on, sell, buy };
+      logIt(s, a.on ? `📊 <b>Børsen</b>: 1 mønt = ${sell} point · 1 mønt koster ${buy} point`
+                    : "📊 <b>Børsen er lukket</b>");
       return { ok: true };
     }
+
     case "setOpen": {
       if (!isAdmin(s, a.by, a.pin)) return DENY;
       s.openAt = a.openAt || null;
@@ -222,13 +299,13 @@ function apply(s, a) {
     }
     case "rename": {
       if (a.by !== a.pi && !isAdmin(s, a.by, a.pin)) return DENY;
-      if (p) p.name = a.name || "?";
+      if (p) p.name = clean(a.name, 24) || "?";
       return { ok: true };
     }
     case "addPlayer": {
       if (!isAdmin(s, a.by, a.pin)) return DENY;
       const i = P.length;
-      P.push({ name: a.name || "Ny deltager", coins: 0, pts: 0, shield: false, streak: 0,
+      P.push({ name: clean(a.name, 24) || "Ny deltager", coins: 0, pts: 0, shield: false, streak: 0,
                freeSpin: 0, admin: false, badges: [], bought: [],
                color: COLORS[i % COLORS.length], icon: ICONS[i % ICONS.length] });
       return { ok: true, pi: i };
@@ -243,7 +320,7 @@ function apply(s, a) {
       if (!isAdmin(s, a.by, a.pin)) return DENY;
       const keep = P.map((q) => ({ name: q.name, icon: q.icon, color: q.color, admin: !!q.admin }));
       const se = (s.season || 1) + 1;
-      const ns = fresh(keep, se);
+      const ns = fresh(keep, se, s.shop, s.ex);   /* kiosk og boers beholdes */
       logIt(ns, `🏁 <b>Sæson ${se}</b> er startet`);
       Object.keys(s).forEach((k) => delete s[k]);
       Object.assign(s, ns);
@@ -258,7 +335,7 @@ async function read() {
   if (!raw) return { v: 1, state: fresh() };
   try {
     const d = typeof raw === "string" ? JSON.parse(raw) : raw;
-    if (d.state && !d.state.pending) d.state.pending = [];
+    if (d.state) upgrade(d.state);
     return d;
   } catch (e) { return { v: 1, state: fresh() }; }
 }
