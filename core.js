@@ -1,11 +1,6 @@
 /* ===================== SLIK-ARENAEN — KERNE ===================== */
 var N=96;
-var ADMIN_PIN="2731";   /* bruges kun naar app'en koerer uden server */
 var ICONS=["🦊","🐼","🐯","🐸","🦁","🐵","🐨","🦄","🐙","🐝","🦖","🐳","🦉","🐶","🐱"];
-var COLORS=["#ffd166","#7ee0b0","#ff9ec7","#8fd0ff","#ffb37a","#c4b5fd","#7fe3e8","#ffa3a3",
-            "#ffe08a","#a8eec0","#f5b8f0","#9ed7ff","#ffc2cd","#bdf0c4","#d4c9fb"];
-var NAMES=["Oskar","Victoria H.","Nilaus","Anissa","Christoffer","Rafael","Victoria M.",
-           "Altin","Amir","Faizan","Angelica"];
 var FACE={candy:"🍬",pts:"⭐",jack:"🏆",mine:"💥",safe:"🛡️",spin:"🎡",dud:"▫️"};
 var LEVELS=[{p:0,n:"Nybegynder"},{p:15,n:"Sælger"},{p:35,n:"Rutineret"},
             {p:60,n:"Haj"},{p:95,n:"Legende"},{p:140,n:"Slikkonge"}];
@@ -19,19 +14,12 @@ var BADGES={
   tower:{i:"🏗️",n:"Bygmester",d:"10+ etager i Stabelspillet"},
   gold:{i:"💎",n:"Dybdegraver",d:"Nåede guldlaget og kom op med puljen"},
   tetris:{i:"🧱",n:"Tetris",d:"Ryddede 6+ rækker i ét spil"},
-  streak:{i:"🔥",n:"På stribe",d:"3 dage i træk med KPT over 6,8"},
+  streak:{i:"🔥",n:"På stribe",d:"KPT over grænsen flere dage i træk"},
   rich:{i:"💰",n:"Formue",d:"Nåede 50 point på én sæson"},
   shop:{i:"🛒",n:"Shopaholic",d:"Købte noget i Kiosken"}
 };
-var DEFAULT_SHOP=[
-  {id:"sodavand",ic:"🥤",n:"Sodavand",   d:"Kold sodavand efter eget valg.",          c:45, out:false},
-  {id:"flode",   ic:"🍫",n:"Flødeboller",d:"To stk. flødeboller.",                    c:60, out:false},
-  {id:"slik",    ic:"🍬",n:"Slikpose",   d:"Bland selv fra skålen.",                  c:72, out:false},
-  {id:"energi",  ic:"⚡",n:"Energidrik", d:"Til den sene eftermiddag.",               c:85, out:false},
-  {id:"oreo",    ic:"🍪",n:"Oreo",       d:"Pakke Oreo-kiks fra kiosken.",            c:100,out:false},
-  {id:"toffee",  ic:"🍮",n:"Toffee Fee", d:"Håndfuld Toffee Fee — den seje slags.",   c:120,out:false}
-];
-var DEFAULT_EX={on:true,sell:2,buy:5};
+var DEFAULT_RULES={sales:[{id:"salg",n:"Salg",c:1,on:true}],csatPer:2,csatCoins:1,kptMin:6.8,kptCoins:1,
+  wrapMax:60,wrapCoins:1,confMin:80,confCoins:1,streakDays:3,streakCoins:2,heat:""};
 var GAMES=[
   {id:"mine",  ic:"💣",n:"Minefeltet",   d:"Holdets fælles bane. Ét felt pr. mønt — slik, jackpot eller bombe.",t:"risk",tl:"Fælles bane"},
   {id:"tetris",ic:"🧱",n:"Tetris",       d:"60 sekunder. Ryd så mange rækker du kan.",t:"skill",tl:"Færdighed"},
@@ -41,52 +29,95 @@ var GAMES=[
   {id:"dig",   ic:"⛏️",n:"Guldgraveren", d:"Grav dybere for mere værdi — eller kom op i tide.",t:"risk",tl:"Alt eller intet"}
 ];
 
-function buildField(){
-  var f=[],i;
-  for(i=0;i<10;i++)f.push({t:"mine",v:-3});
-  for(i=0;i<3;i++) f.push({t:"mine",v:-6});
-  for(i=0;i<20;i++)f.push({t:"candy",v:2});
-  for(i=0;i<16;i++)f.push({t:"pts",v:3});
-  for(i=0;i<11;i++)f.push({t:"pts",v:5});
-  for(i=0;i<4;i++) f.push({t:"jack",v:14});
-  for(i=0;i<5;i++) f.push({t:"safe",v:0});
-  for(i=0;i<6;i++) f.push({t:"spin",v:0});
-  while(f.length<N)f.push({t:"dud",v:0});
-  for(i=f.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var x=f[i];f[i]=f[j];f[j]=x}
-  return f.map(function(c){c.open=false;c.by=null;return c});
-}
-function mkPlayers(old){
-  var src=old||NAMES.map(function(n){return{name:n}});
-  return src.map(function(o,i){
-    return {name:o.name,coins:0,pts:0,shield:false,streak:0,freeSpin:0,
-            admin:(o.admin!=null?o.admin:(o.name==="Oskar")),badges:[],bought:[],
-            color:o.color||COLORS[i%COLORS.length],icon:o.icon||ICONS[i%ICONS.length]};
-  });
-}
+var S={field:[],players:[],log:[],last:-1,season:1,best:{},spins:0,openAt:null,pending:[],
+       shop:[],ex:{on:false,sell:2,buy:5},games:[],rules:clone(DEFAULT_RULES)};
+var UI={view:"hq",me:-1,day:{},mode:"error",busy:false,ver:0,pin:"",draft:null,gdraft:null,rdraft:null};
+
 function clone(o){return JSON.parse(JSON.stringify(o))}
-function freshState(old,season,shop,ex){
-  return {field:buildField(),players:mkPlayers(old),log:[],last:-1,season:season||1,
-          best:{wheel:0,shoot:0,stack:0,dig:0,tetris:0},spins:0,openAt:null,pending:[],
-          shop:shop||clone(DEFAULT_SHOP),ex:ex||clone(DEFAULT_EX)};
-}
-function upgradeState(s){
-  if(!s.pending)s.pending=[];
-  if(!s.shop||!s.shop.length)s.shop=clone(DEFAULT_SHOP);
-  if(!s.ex)s.ex=clone(DEFAULT_EX);
-  return s;
-}
-
-var S=freshState();
-var UI={view:"hq",me:-1,day:{},mode:"local",busy:false,ver:0,pin:"",draft:null};
-
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
 function lsDel(k){try{localStorage.removeItem(k)}catch(e){}}
 function esc(t){return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;")}
+function fmt(n){n=Math.round(n*100)/100;return String(n).replace(".",",")}
+function upgradeState(s){
+  s.pending=s.pending||[];s.shop=s.shop||[];s.games=s.games||[];s.players=s.players||[];
+  s.ex=s.ex||{on:false,sell:2,buy:5};
+  if(!s.rules)s.rules=clone(DEFAULT_RULES);
+  Object.keys(DEFAULT_RULES).forEach(function(k){if(s.rules[k]==null)s.rules[k]=clone(DEFAULT_RULES[k])});
+  if(!s.rules.sales||!s.rules.sales.length)s.rules.sales=clone(DEFAULT_RULES.sales);
+  s.players.forEach(function(p){if(!p.used)p.used={}});
+  return s;
+}
+function R(){return S.rules||DEFAULT_RULES}
+function activeSales(){return R().sales.filter(function(t){return t.on})}
 
-function shopList(){return (S.shop&&S.shop.length)?S.shop:DEFAULT_SHOP}
-function exRates(){return S.ex||DEFAULT_EX}
-function levelOf(p){var l=LEVELS[0],i;for(i=0;i<LEVELS.length;i++)if(p>=LEVELS[i].p)l=LEVELS[i];return l}
+/* ---------- MØNTBEREGNING — samme funktion findes i api/state.js ---------- */
+function salesCount(r,id,RR){
+  if(r.sales&&r.sales[id]!=null)return Math.max(0,+r.sales[id]||0);
+  if(!r.sales&&r.salg&&RR.sales[0]&&RR.sales[0].id===id)return Math.max(0,+r.salg||0);
+  return 0;
+}
+function breakdown(p,r,RR){
+  RR=RR||R();
+  var parts=[],sum=0;
+  RR.sales.forEach(function(t){
+    if(!t.on)return;
+    var k=salesCount(r,t.id,RR);
+    if(k>0&&t.c>0){sum+=k*t.c;parts.push({l:k+" × "+t.n,v:k*t.c})}
+  });
+  var n=Math.floor(sum+1e-9);
+  var csat=+r.csat||0,kpt=+r.kpt||0,wrap=+r.wrap||0,conf=+r.conf||0;
+  if(RR.csatPer>0&&csat>=RR.csatPer){
+    var c=Math.floor(csat/RR.csatPer)*RR.csatCoins;
+    if(c){n+=c;parts.push({l:csat+" × 5-stjernet CSAT",v:c})}
+  }
+  var kptOk=kpt>RR.kptMin;
+  if(kptOk&&RR.kptCoins){n+=RR.kptCoins;parts.push({l:"KPT over "+fmt(RR.kptMin),v:RR.kptCoins})}
+  if(wrap>0&&wrap<RR.wrapMax&&RR.wrapCoins){n+=RR.wrapCoins;parts.push({l:"Wrap up under "+RR.wrapMax+" sek",v:RR.wrapCoins})}
+  if(conf>RR.confMin&&RR.confCoins){n+=RR.confCoins;parts.push({l:"Conformance over "+fmt(RR.confMin)+" %",v:RR.confCoins})}
+  if(kptOk&&RR.streakDays>0&&(((p&&p.streak)||0)+1)%RR.streakDays===0&&RR.streakCoins){
+    n+=RR.streakCoins;parts.push({l:RR.streakDays+" dage i streak",v:RR.streakCoins})}
+  return {n:n,parts:parts,salesRaw:sum};
+}
+/* regeltekster til forsiden og "Mine tal" */
+function ruleLines(){
+  var r=R(),out=[];
+  activeSales().forEach(function(t){out.push(["💰 Pr. "+t.n,fmt(t.c)+" mønt"+(t.c===1?"":"er")])});
+  out.push(["⭐ Hver "+(r.csatPer===1?"":r.csatPer+". ")+"CSAT med 5 stjerner",fmt(r.csatCoins)+" mønt"+(r.csatCoins===1?"":"er")]);
+  if(r.kptCoins)out.push(["🎯 Dag med KPT over "+fmt(r.kptMin),fmt(r.kptCoins)+" mønt"+(r.kptCoins===1?"":"er")]);
+  if(r.wrapCoins)out.push(["⏱️ Wrap up under "+r.wrapMax+" sek",fmt(r.wrapCoins)+" mønt"+(r.wrapCoins===1?"":"er")]);
+  if(r.confCoins)out.push(["📊 Conformance over "+fmt(r.confMin)+" %",fmt(r.confCoins)+" mønt"+(r.confCoins===1?"":"er")]);
+  if(r.streakCoins&&r.streakDays)out.push(["🔥 "+r.streakDays+" dage i streak på KPT","+"+fmt(r.streakCoins)+" mønter"]);
+  return out;
+}
+function rulesHTML(){return ruleLines().map(function(x){return '<div class="rule">'+esc(x[0])+' <b>'+esc(x[1])+'</b></div>'}).join("")}
+/* heat: egen tekst, ellers automatisk ud fra afvigelser fra standard */
+function heatText(){
+  var r=R(),d=DEFAULT_RULES,b=[];
+  if(r.heat)return r.heat;
+  if(r.csatCoins>d.csatCoins||r.csatPer<d.csatPer)b.push("CSAT giver ekstra");
+  if(r.kptCoins>d.kptCoins)b.push("KPT giver "+fmt(r.kptCoins)+" mønter");
+  if(r.wrapCoins>d.wrapCoins)b.push("wrap up giver "+fmt(r.wrapCoins)+" mønter");
+  if(r.confCoins>d.confCoins)b.push("conformance giver "+fmt(r.confCoins)+" mønter");
+  if(r.streakCoins>d.streakCoins)b.push("streak giver "+fmt(r.streakCoins)+" mønter");
+  return b.length?"Lige nu: "+b.join(", ")+"!":"";
+}
+function drawHeat(id){
+  var e=document.getElementById(id);if(!e)return;
+  var t=heatText();
+  e.style.display=t?"":"none";
+  if(t)e.innerHTML='<span class="heatic">🔥</span><div><b>HEAT</b><br>'+esc(t)+'</div>';
+}
+
+function shopList(){return S.shop||[]}
+function exRates(){return S.ex||{on:false,sell:2,buy:5}}
+function gameCfg(id){return (S.games||[]).filter(function(g){return g.id===id})[0]||{id:id,on:true,cap:0}}
+function gameOn(id){return !!gameCfg(id).on}
+function todayKey(){return new Date(Date.now()+2*3600*1000).toISOString().slice(0,10)}
+function usedToday(p,id){var u=p&&p.used&&p.used[id];return (u&&u.d===todayKey())?(u.p||0):0}
+function capLeft(id,p){p=p||me();if(!p)return 0;var g=gameCfg(id);if(!g.cap)return Infinity;return Math.max(0,g.cap-usedToday(p,id))}
+function capText(id){var g=gameCfg(id),p=me();if(!g.cap||!p)return "";var l=capLeft(id,p);return l<=0?"Dagens grænse nået":(l+" af "+g.cap+" point tilbage i dag")}
+function levelOf(p){var l=LEVELS[0];for(var i=0;i<LEVELS.length;i++)if(p>=LEVELS[i].p)l=LEVELS[i];return l}
 function stat(t){return S.field.filter(function(c){return !c.open&&c.t===t}).length}
 function openCount(){return S.field.filter(function(c){return c.open}).length}
 function pend(){return S.pending||[]}
@@ -104,7 +135,6 @@ function toast(t,cls){
 function setTxt(id,v){var e=document.getElementById(id);if(e)e.textContent=v}
 function me(){return UI.me>=0?S.players[UI.me]:null}
 function myCoins(){var p=me();return p?p.coins:0}
-function badgeOf(k){return BADGES[k]}
 function iAmAdmin(){var p=me();return !!(p&&p.admin&&UI.pin)}
 function isAdminAcct(){var p=me();return !!(p&&p.admin)}
 function isLocked(){return !!(S.openAt&&Date.now()<Date.parse(S.openAt))}
@@ -118,12 +148,13 @@ function countdown(){
   var ms=Date.parse(S.openAt)-Date.now(),h=Math.floor(ms/3600000),m=Math.floor(ms/60000)%60;
   return h>=24?(Math.floor(h/24)+" dage "+(h%24)+" timer"):(h+"t "+m+"m");
 }
-function coinsForRow(p,r){
-  var n=Math.floor(r.salg||0)+Math.floor((r.csat||0)/2)+((r.kpt||0)>6.8?1:0);
-  if(r.wrap>0&&r.wrap<60)n+=1;
-  if((r.conf||0)>80)n+=1;
-  if((r.kpt||0)>6.8&&((p.streak||0)+1)%3===0)n+=2;
-  return n;
+function canPlay(id){
+  var p=me();
+  if(!p){openWho();return false}
+  if(isLocked()){toast("⏳ Spillene åbner "+openText(),"bad");return false}
+  if(!gameOn(id)){toast("🔒 Spillet er lukket lige nu","bad");return false}
+  if(capLeft(id,p)<=0){toast("🛑 Du har nået dagens grænse i dette spil","bad");return false}
+  return true;
 }
 
 var PAGES=["hq","games","mine","tetris","wheel","shoot","stack","dig","board","shop","bors","tal","admin"];
@@ -132,23 +163,19 @@ function go(v){
   if(typeof stack!=="undefined"&&stack.on&&v!=="stack")stackEnd(true);
   if(typeof dig!=="undefined"&&dig.on&&v!=="dig")digEnd(true);
   if(typeof tet!=="undefined"&&tet.on&&v!=="tetris")tetrisEnd(true);
-  if(v!=="admin")UI.draft=null;
+  if(v!=="admin"){UI.draft=null;UI.gdraft=null;UI.rdraft=null}
   UI.view=v;
   PAGES.forEach(function(k){var e=document.getElementById("v-"+k);if(e)e.hidden=(k!==v)});
   var navKey=(["mine","tetris","wheel","shoot","stack","dig"].indexOf(v)>-1)?"games":v;
-  Array.prototype.forEach.call(document.querySelectorAll("#nav button"),function(b){
-    b.classList.toggle("on",b.dataset.v===navKey);
-  });
+  Array.prototype.forEach.call(document.querySelectorAll("#nav button"),function(b){b.classList.toggle("on",b.dataset.v===navKey)});
   render();
 }
 
-/* ---------- hvem er du + pinkode ---------- */
 function openWho(){
   var h="";
   S.players.forEach(function(p,i){
     h+='<button onclick="setMe('+i+')"><span class="ava" style="background:'+p.color+
-       ';width:30px;height:30px;font-size:16px;border-radius:10px">'+p.icon+'</span>'+
-       esc(p.name)+(p.admin?' 🔒':'')+'</button>';
+       ';width:30px;height:30px;font-size:16px;border-radius:10px">'+p.icon+'</span>'+esc(p.name)+(p.admin?' 🔒':'')+'</button>';
   });
   document.getElementById("whoGrid").innerHTML=h;
   document.getElementById("whoModal").hidden=false;
@@ -156,27 +183,24 @@ function openWho(){
 function setMe(i){
   var p=S.players[i];
   document.getElementById("whoModal").hidden=true;
-  if(p&&p.admin){ UI.me=i; lsSet("arena_me",String(i)); openPin(); return }
+  if(p&&p.admin){UI.me=i;lsSet("arena_me",String(i));openPin();return}
   UI.me=i;UI.pin="";lsDel("arena_pin");lsSet("arena_me",String(i));
   if(p)toast(p.icon+" Hej "+p.name+"!","cool");
   if(UI.view==="admin")go("hq"); else render();
 }
 function openPin(){
-  var e=document.getElementById("pinModal");if(!e)return;
-  e.hidden=false;setTxt("pinErr","");
-  var f=document.getElementById("pinInput");
-  if(f){f.value="";setTimeout(function(){f.focus()},60)}
+  var e=document.getElementById("pinModal");e.hidden=false;setTxt("pinErr","");
+  var f=document.getElementById("pinInput");f.value="";setTimeout(function(){f.focus()},60);
 }
 function closePin(){
-  var e=document.getElementById("pinModal");if(e)e.hidden=true;
+  document.getElementById("pinModal").hidden=true;
   if(isAdminAcct()&&!UI.pin){UI.me=-1;lsDel("arena_me");render();openWho()}
 }
 function submitPin(){
-  var f=document.getElementById("pinInput");
-  var pin=f?String(f.value||"").trim():"";
+  var f=document.getElementById("pinInput"),pin=String(f.value||"").trim();
   if(!pin){setTxt("pinErr","Indtast koden");return}
   send({type:"adminLogin",pi:UI.me,pin:pin},function(r){
-    if(r&&r.err){setTxt("pinErr",r.err);if(f){f.value="";f.focus()}return}
+    if(r&&r.err){setTxt("pinErr",r.err);f.value="";f.focus();return}
     UI.pin=pin;lsSet("arena_pin",pin);
     document.getElementById("pinModal").hidden=true;
     toast("👑 Velkommen, Oskar","cool");render();
@@ -186,49 +210,32 @@ function logoutAdmin(){UI.pin="";lsDel("arena_pin");toast("🔒 Låst igen","coo
 
 function drawMe(){
   var p=me(),b=document.getElementById("meBtn");
-  if(b)b.innerHTML=p
-    ? '<span class="ava" style="background:'+p.color+'">'+p.icon+'</span>'+
-      '<span><b>'+esc(p.name)+(p.admin?(UI.pin?' 👑':' 🔒'):'')+'</b><br>'+
-      '<span>🪙 '+p.coins+' mønter · ⭐ '+p.pts+' point</span></span>'
-    : '<span class="ava" style="background:#eee">❓</span><span><b>Vælg dig selv</b><br><span>klik her</span></span>';
+  b.innerHTML=p?'<span class="ava" style="background:'+p.color+'">'+p.icon+'</span>'+
+      '<span><b>'+esc(p.name)+(p.admin?(UI.pin?' 👑':' 🔒'):'')+'</b><br><span>🪙 '+p.coins+' mønter · ⭐ '+p.pts+' point</span></span>'
+    :'<span class="ava" style="background:#eee">❓</span><span><b>Vælg dig selv</b><br><span>klik her</span></span>';
   var s=document.getElementById("syncBadge");
-  if(s){
-    s.className="sync "+(UI.mode==="live"?"live":UI.mode==="error"?"err":"local");
-    s.textContent=UI.mode==="live"?"● Live — alle ser det samme":
-                  UI.mode==="error"?"● Offline":"● Kun denne skærm";
-  }
-  var nb=document.getElementById("navAdmin"), n=pend().length;
-  if(nb){
-    nb.style.display=iAmAdmin()?"":"none";
-    var d=nb.querySelector(".dot");
-    if(iAmAdmin()&&n>0){
-      if(!d){d=document.createElement("span");d.className="dot";nb.appendChild(d)}
-      d.textContent=n;
-    } else if(d)d.remove();
-  }
-  var bn=document.getElementById("navBors");
-  if(bn)bn.style.display=exRates().on?"":"none";
+  s.className="sync "+(UI.mode==="live"?"live":"err");
+  s.textContent=UI.mode==="live"?"● Live — alle ser det samme":"● Forbinder…";
+  var nb=document.getElementById("navAdmin"),n=pend().length;
+  nb.style.display=iAmAdmin()?"":"none";
+  var d=nb.querySelector(".dot");
+  if(iAmAdmin()&&n>0){if(!d){d=document.createElement("span");d.className="dot";nb.appendChild(d)}d.textContent=n}
+  else if(d)d.remove();
+  document.getElementById("navBors").style.display=exRates().on?"":"none";
 }
-
-function rowHTML(p,i,mode,clickable){
+function rowHTML(p,i,clickable){
   var r=ranks(),med=["🥇","🥈","🥉"];
-  var right = mode==="coins"
-    ? '<div class="score"><b>'+p.coins+'</b><span>MØNTER</span></div>'
-    : '<div class="score"><b>'+p.pts+'</b><span>POINT</span></div>';
-  return '<div class="prow'+(i===UI.me?" me":"")+(clickable?" pick":"")+'"'+
-    (clickable?' onclick="setMe('+i+')"':'')+'>'+
+  return '<div class="prow'+(i===UI.me?" me":"")+(clickable?" pick":"")+'"'+(clickable?' onclick="setMe('+i+')"':'')+'>'+
     (r[i]<3?'<span class="medal">'+med[r[i]]+'</span>':'')+
     '<div class="ava" style="background:'+p.color+'">'+p.icon+'</div>'+
-    '<div><div class="pname">'+esc(p.name)+(p.admin?' 👑':'')+
-      ' <span class="lvl">'+levelOf(p.pts).n+'</span></div>'+
-    '<div class="pmeta">🪙 '+p.coins+' · ⭐ '+p.pts+
-      (p.shield?' · 🛡️':'')+(p.streak>=3?' · <span class="streak">🔥'+p.streak+'</span>':'')+
-      (p.freeSpin?' · 🎡'+p.freeSpin+' gratis':'')+'</div></div>'+right+'</div>';
+    '<div><div class="pname">'+esc(p.name)+(p.admin?' 👑':'')+' <span class="lvl">'+levelOf(p.pts).n+'</span></div>'+
+    '<div class="pmeta">🪙 '+p.coins+' · ⭐ '+p.pts+(p.shield?' · 🛡️':'')+
+      (p.streak>=3?' · <span class="streak">🔥'+p.streak+'</span>':'')+(p.freeSpin?' · 🎡'+p.freeSpin+' gratis':'')+'</div></div>'+
+    '<div class="score"><b>'+p.pts+'</b><span>POINT</span></div></div>';
 }
-function drawList(id,mode,clickable){
+function drawList(id,clickable){
   var e=document.getElementById(id);if(!e)return;
-  var h="";S.players.forEach(function(p,i){h+=rowHTML(p,i,mode,clickable)});
-  e.innerHTML=h;
+  e.innerHTML=S.players.map(function(p,i){return rowHTML(p,i,clickable)}).join("");
 }
 function myBar(id,extra){
   var e=document.getElementById(id);if(!e)return;
@@ -252,485 +259,447 @@ function drawHQ(){
    '<div class="stat"><b>'+S.players.length+'</b><span>deltagere</span></div>'+
    '<div class="stat"><b style="color:#f5a623">'+coins+'</b><span>mønter i spil</span></div>'+
    '<div class="stat"><b>'+pts+'</b><span>point i alt</span></div>'+
-   '<div class="stat"><b style="color:#f2545b">'+stat("mine")+'</b><span>bomber tilbage</span></div>'+
    '<div class="stat"><b>'+(lead&&lead.pts>0?lead.icon+" "+lead.pts:"–")+'</b><span>fører</span></div>'+
-   (isLocked()?'<div class="stat" style="background:linear-gradient(180deg,#fff3d6,#ffe3f0);border-color:#f7cf95">'+
-     '<b style="color:#b9895a;font-size:19px">'+countdown()+'</b><span>til åbning</span></div>':'');
+   (isLocked()?'<div class="stat"><b style="color:#b9895a;font-size:19px">'+countdown()+'</b><span>til åbning</span></div>':'');
+  drawHeat("hqHeat");
   myBar("hqMe");
-  drawList("hqList","pts",true);
-  document.getElementById("hqLog").innerHTML=S.log.length?
-    S.log.slice(0,12).map(function(l){return "<div>"+l+"</div>"}).join(""):
+  drawList("hqList",true);
+  document.getElementById("hqRules").innerHTML=rulesHTML();
+  document.getElementById("hqLog").innerHTML=S.log.length?S.log.slice(0,12).map(function(l){return "<div>"+l+"</div>"}).join(""):
     '<div style="color:#c2ae9a">Ingenting er sket endnu.</div>';
-  setTxt("seasonLbl","Sæson "+S.season);setTxt("seasonLbl2","Sæson "+S.season);
+  setTxt("seasonLbl2","Sæson "+S.season);
 }
 
 function drawGames(){
   myBar("gamesMe");
   var lk=document.getElementById("lockBanner");
-  if(lk){
-    lk.style.display=isLocked()?"":"none";
-    if(isLocked())lk.innerHTML='<b>⏳ Spillehallen åbner '+openText()+'</b><br>'+
-      '<span style="font-weight:800;font-size:13px">Saml mønter indtil da — '+countdown()+' tilbage.</span>';
-  }
-  var h="";
+  lk.style.display=isLocked()?"":"none";
+  if(isLocked())lk.innerHTML='<b>⏳ Spillehallen åbner '+openText()+'</b><br><span style="font-weight:800;font-size:13px">Saml mønter indtil da — '+countdown()+' tilbage.</span>';
+  var p=me(),h="";
   GAMES.forEach(function(g){
-    var sub=g.id==="mine" ? (N-openCount())+" felter tilbage"
-                          : (S.best[g.id]?"Rekord: "+S.best[g.id]:"");
-    h+='<div class="gcard'+(isLocked()?" lockedcard":"")+'" onclick="'+
-       (isLocked()?'toast(\'⏳ Åbner '+openText()+'\',\'bad\')':'go(\''+g.id+'\')')+
-       '"><div class="ic">'+(isLocked()?"🔒":g.ic)+'</div>'+
-       '<b>'+g.n+'</b><p>'+g.d+'</p><span class="gtag t-'+g.t+'">'+g.tl+'</span>'+
-       (sub?'<div class="pmeta" style="margin-top:8px">'+sub+'</div>':'')+'</div>';
+    var cfg=gameCfg(g.id),off=!cfg.on,left=p?capLeft(g.id,p):Infinity,done=cfg.on&&p&&left<=0;
+    var dis=isLocked()||off||done,sub;
+    if(off)sub='<div class="pmeta closed">Lukket af Oskar</div>';
+    else if(done)sub='<div class="pmeta capped">🛑 Dagens grænse nået</div>';
+    else if(cfg.cap&&p)sub='<div class="pmeta">'+left+' af '+cfg.cap+' point tilbage i dag</div>';
+    else sub=S.best[g.id]?'<div class="pmeta">Rekord: '+S.best[g.id]+'</div>':'';
+    h+='<div class="gcard'+(dis?" lockedcard":"")+'" onclick="'+
+       (isLocked()?"toast('⏳ Åbner "+openText()+"','bad')":off?"toast('🔒 Spillet er lukket lige nu','bad')":
+        done?"toast('🛑 Du har nået dagens grænse her','bad')":"go('"+g.id+"')")+'">'+
+       (off?'<span class="closedtag">LUKKET</span>':'')+
+       '<div class="ic">'+(isLocked()||off?"🔒":done?"🛑":g.ic)+'</div>'+
+       '<b>'+g.n+'</b><p>'+g.d+'</p><span class="gtag t-'+g.t+'">'+g.tl+'</span>'+sub+'</div>';
   });
   document.getElementById("hub").innerHTML=h;
 }
 
 function drawMine(){
-  var left=N-openCount();
   document.getElementById("mineStats").innerHTML=
-   '<div class="stat"><b>'+left+'</b><span>felter tilbage</span></div>'+
+   '<div class="stat"><b>'+(N-openCount())+'</b><span>felter tilbage</span></div>'+
    '<div class="stat"><b style="color:#f2545b">'+stat("mine")+'</b><span>bomber</span></div>'+
-   '<div class="stat"><b style="color:#ff6fae">'+stat("candy")+'</b><span>slik</span></div>'+
    '<div class="stat"><b style="color:#e29500">'+stat("jack")+'</b><span>jackpot</span></div>'+
-   '<div class="stat"><b style="color:#4cc3f0">'+stat("safe")+'</b><span>skjold</span></div>'+
-   '<div class="stat"><b style="color:#8b7bf0">'+stat("spin")+'</b><span>gratis spin</span></div>';
+   '<div class="stat"><b style="color:#4cc3f0">'+stat("safe")+'</b><span>skjold</span></div>';
   var pct=Math.round(openCount()/N*100);
   document.getElementById("pbar").style.width=pct+"%";
   setTxt("ptxt",openCount()+" af "+N+" felter ryddet · "+pct+"%");
-  myBar("mineMe");
-  var can=myCoins()>0,h="";
+  myBar("mineMe",capText("mine")||null);
+  var p=me(),can=p&&p.coins>0&&gameOn("mine")&&capLeft("mine",p)>0&&!isLocked(),h="";
   S.field.forEach(function(c,i){
-    var cls=c.open?"done":(can?"":"locked");
-    var p=c.by!=null?S.players[c.by]:null;
-    h+='<div class="cell '+cls+(i===S.last?" fresh":"")+'"'+
-       ((!c.open&&can)?' onclick="tap('+i+')"':'')+'>'+
-       '<div class="face front">'+(i+1)+'</div>'+
-       '<div class="face back b-'+c.t+'">'+FACE[c.t]+
-         ((c.t==="pts"||c.t==="jack")?'<span class="v">+'+c.v+'</span>':'')+
-         (c.t==="mine"?'<span class="v">'+c.v+'</span>':'')+
-         (p?'<span class="who">'+p.icon+'</span>':'')+'</div></div>';
+    var q=c.by!=null?S.players[c.by]:null;
+    h+='<div class="cell '+(c.open?"done":(can?"":"locked"))+(i===S.last?" fresh":"")+'"'+((!c.open&&can)?' onclick="tap('+i+')"':'')+'>'+
+       '<div class="face front">'+(i+1)+'</div><div class="face back b-'+c.t+'">'+FACE[c.t]+
+       ((c.t==="pts"||c.t==="jack")?'<span class="v">+'+c.v+'</span>':'')+(c.t==="mine"?'<span class="v">'+c.v+'</span>':'')+
+       (q?'<span class="who">'+q.icon+'</span>':'')+'</div></div>';
   });
   document.getElementById("grid").innerHTML=h;
-  drawList("mineList","pts",false);
+  drawList("mineList",false);
 }
 function tap(i){
-  var p=me();
-  if(!p){openWho();return}
-  if(p.coins<1){toast("Du har ingen mønter tilbage","bad");return}
+  if(!canPlay("mine"))return;
+  if(me().coins<1){toast("Du har ingen mønter tilbage","bad");return}
   if(S.field[i].open){toast("Feltet er lige blevet taget","bad");return}
   send({type:"tap",pi:UI.me,idx:i},function(r){
     if(!r)return;
     if(r.err){toast(r.err,"bad");return}
-    if(r.kind==="candy")toast("🍬 Slik! +2 point","win");
+    if(r.kind==="candy")toast("🍬 Slik! +"+r.v+" point","win");
     else if(r.kind==="jack"){toast("🏆 JACKPOT! +"+r.v,"win");burst(200)}
     else if(r.kind==="safe")toast("🛡️ Du er beskyttet","cool");
     else if(r.kind==="spin")toast("🎡 Gratis spin på Lykkehjulet!","cool");
     else if(r.kind==="mine")r.saved?toast("🛡️ Skjoldet holdt!","cool"):toast("💥 BOOM! "+r.v,"bad");
     else if(r.kind==="pts")toast("⭐ +"+r.v+" point","win");
-    if(N-openCount()===0){toast("🏁 Minefeltet er ryddet!","win");burst(300)}
+    if(r.capped)toast("🛑 Dagens grænse nået i Minefeltet","bad");
   });
 }
 
 function drawBoard(){
   var sorted=S.players.map(function(p,i){return{p:p,i:i}}).sort(function(a,b){return b.p.pts-a.p.pts});
-  var max=Math.max(1,sorted[0]?sorted[0].p.pts:1);
-  var med=["🥇","🥈","🥉"],ord=[1,0,2],h="";
-  ord.forEach(function(k){
+  var max=Math.max(1,sorted[0]?sorted[0].p.pts:1),med=["🥇","🥈","🥉"],h="";
+  [1,0,2].forEach(function(k){
     var o=sorted[k];if(!o)return;
-    h+='<div class="pod" style="min-height:'+[92,116,78][k]+'px">'+
-       '<div class="ava" style="background:'+o.p.color+'">'+o.p.icon+'</div>'+
+    h+='<div class="pod" style="min-height:'+[92,116,78][k]+'px"><div class="ava" style="background:'+o.p.color+'">'+o.p.icon+'</div>'+
        '<b>'+med[k]+' '+o.p.pts+'</b><small>'+esc(o.p.name).toUpperCase()+'</small></div>';
   });
   document.getElementById("podium").innerHTML=h;
-  h="";
-  sorted.forEach(function(o,k){
+  document.getElementById("lb").innerHTML=sorted.map(function(o,k){
     var p=o.p;
-    h+='<div class="lbrow'+(k<3?" p"+(k+1):"")+(o.i===UI.me?" you":"")+'">'+
-       '<div class="rank">'+(k<3?med[k]:"#"+(k+1))+'</div>'+
-       '<div class="ava" style="background:'+p.color+'">'+p.icon+'</div>'+
-       '<div style="min-width:132px"><div class="pname">'+esc(p.name)+'</div>'+
-       '<div class="pmeta">'+levelOf(p.pts).n+' · 🪙 '+p.coins+
-         (p.streak>=3?' · <span class="streak">🔥'+p.streak+'</span>':'')+'</div>'+
-       '<div class="badges">'+p.badges.map(function(b){
-          return badgeOf(b)?'<span class="badge" title="'+badgeOf(b).n+'">'+badgeOf(b).i+'</span>':''}).join("")+
-       '</div></div>'+
-       '<div class="bar"><i style="width:'+Math.round(p.pts/max*100)+'%;background:'+p.color+'"></i></div>'+
-       '<div class="score"><b>'+p.pts+'</b><span>POINT</span></div></div>';
-  });
-  document.getElementById("lb").innerHTML=h;
-  h="";
-  Object.keys(BADGES).forEach(function(k){
+    return '<div class="lbrow'+(k<3?" p"+(k+1):"")+(o.i===UI.me?" you":"")+'"><div class="rank">'+(k<3?med[k]:"#"+(k+1))+'</div>'+
+      '<div class="ava" style="background:'+p.color+'">'+p.icon+'</div><div style="min-width:132px"><div class="pname">'+esc(p.name)+'</div>'+
+      '<div class="pmeta">'+levelOf(p.pts).n+' · 🪙 '+p.coins+'</div><div class="badges">'+
+      p.badges.map(function(b){return BADGES[b]?'<span class="badge" title="'+BADGES[b].n+'">'+BADGES[b].i+'</span>':''}).join("")+
+      '</div></div><div class="bar"><i style="width:'+Math.round(p.pts/max*100)+'%;background:'+p.color+'"></i></div>'+
+      '<div class="score"><b>'+p.pts+'</b><span>POINT</span></div></div>';
+  }).join("");
+  document.getElementById("badgeInfo").innerHTML=Object.keys(BADGES).map(function(k){
     var b=BADGES[k],who=S.players.filter(function(p){return p.badges.indexOf(k)>-1});
-    h+='<div class="item"><div class="ic">'+b.i+'</div><b>'+b.n+'</b><p>'+b.d+'</p>'+
-       '<div class="pmeta">'+(who.length?who.map(function(p){return p.icon}).join(" "):"Ingen endnu")+'</div></div>';
-  });
-  document.getElementById("badgeInfo").innerHTML=h;
+    return '<div class="item"><div class="ic">'+b.i+'</div><b>'+b.n+'</b><p>'+b.d+'</p><div class="pmeta">'+
+      (who.length?who.map(function(p){return p.icon}).join(" "):"Ingen endnu")+'</div></div>';
+  }).join("");
 }
 
-/* ================= KIOSKEN ================= */
 function drawShop(){
   myBar("shopMe",(me()?"Du har ⭐ "+me().pts+" point at handle for":""));
-  var p=me(),h="";
-  shopList().forEach(function(it){
-    var ok=p&&p.pts>=it.c&&!it.out;
-    var n=p?p.bought.filter(function(x){return x===it.id}).length:0;
-    h+='<div class="item'+(ok?" can":"")+(it.out?" soldout":"")+'">'+
-       (it.out?'<span class="soldtag">UDSOLGT</span>':'')+
-       '<div class="ic">'+esc(it.ic)+'</div>'+
-       '<b>'+esc(it.n)+'</b><p>'+esc(it.d)+'</p>'+
-       (n?'<span class="owned">Købt '+n+'×</span>':'')+
-       '<span class="cost">'+it.c+' point</span>'+
-       '<button class="big sm" onclick="buy(\''+esc(it.id)+'\')"'+(ok?"":" disabled")+'>'+
-       (it.out?"Udsolgt":ok?"Køb":(p?"Mangler "+(it.c-p.pts):"Vælg dig selv"))+'</button></div>';
-  });
-  document.getElementById("shop").innerHTML=h;
+  var p=me();
+  document.getElementById("shop").innerHTML=shopList().map(function(it){
+    var ok=p&&p.pts>=it.c&&!it.out,n=p?p.bought.filter(function(x){return x===it.id}).length:0;
+    return '<div class="item'+(ok?" can":"")+(it.out?" soldout":"")+'">'+(it.out?'<span class="soldtag">UDSOLGT</span>':'')+
+      '<div class="ic">'+esc(it.ic)+'</div><b>'+esc(it.n)+'</b><p>'+esc(it.d)+'</p>'+(n?'<span class="owned">Købt '+n+'×</span>':'')+
+      '<span class="cost">'+it.c+' point</span><button class="big sm" onclick="buy(\''+esc(it.id)+'\')"'+(ok?"":" disabled")+'>'+
+      (it.out?"Udsolgt":ok?"Køb":(p?"Mangler "+(it.c-p.pts):"Vælg dig selv"))+'</button></div>';
+  }).join("");
 }
 function buy(id){
-  var p=me();if(!p){openWho();return}
+  if(!me()){openWho();return}
   send({type:"buy",pi:UI.me,id:id},function(r){
     if(r&&r.err){toast(r.err,"bad");return}
-    toast((r&&r.ic||"🛒")+" Du købte "+(r&&r.name||"")+"!","win");burst(90);
+    toast((r.ic||"🛒")+" Du købte "+(r.name||"")+"!","win");burst(90);
   });
 }
 
-/* ================= BØRSEN ================= */
-function borsN(){var e=document.getElementById("borsN");var n=e?parseInt(e.value,10):1;return (n>0&&n<=50)?n:1}
-function borsStep(d){var e=document.getElementById("borsN");if(!e)return;e.value=Math.max(1,Math.min(50,borsN()+d));drawBors()}
+function borsN(){var n=parseInt(document.getElementById("borsN").value,10);return (n>0&&n<=50)?n:1}
+function borsStep(d){document.getElementById("borsN").value=Math.max(1,Math.min(50,borsN()+d));drawBors()}
 function drawBors(){
   var p=me(),ex=exRates(),n=borsN();
   myBar("borsMe",p?("🪙 "+p.coins+" mønter · ⭐ "+p.pts+" point"):"");
-  setTxt("rateSell","1 mønt → "+ex.sell+" point");
-  setTxt("rateBuy",ex.buy+" point → 1 mønt");
+  setTxt("rateSell","1 mønt → "+ex.sell+" point");setTxt("rateBuy",ex.buy+" point → 1 mønt");
   setTxt("borsState",ex.on?"Børsen er åben":"Børsen er lukket");
   var s=document.getElementById("sellBtn"),b=document.getElementById("buyBtn");
-  if(s){s.textContent="Sælg "+n+" mønt"+(n>1?"er":"")+" → få "+(n*ex.sell)+" point";
-        s.disabled=!p||!ex.on||p.coins<n}
-  if(b){b.textContent="Køb "+n+" mønt"+(n>1?"er":"")+" for "+(n*ex.buy)+" point";
-        b.disabled=!p||!ex.on||p.pts<n*ex.buy}
+  s.textContent="Sælg "+n+" mønt"+(n>1?"er":"")+" → få "+(n*ex.sell)+" point";s.disabled=!p||!ex.on||p.coins<n;
+  b.textContent="Køb "+n+" mønt"+(n>1?"er":"")+" for "+(n*ex.buy)+" point";b.disabled=!p||!ex.on||p.pts<n*ex.buy;
 }
 function exchange(dir){
-  var p=me();if(!p){openWho();return}
+  if(!me()){openWho();return}
   var n=borsN();
   send({type:"exchange",pi:UI.me,dir:dir,n:n},function(r){
     if(r&&r.err){toast(r.err,"bad");return}
-    if(dir==="toPts")toast("📈 "+n+" mønt"+(n>1?"er":"")+" → +"+r.g+" point","win");
-    else toast("📉 Du købte "+n+" mønt"+(n>1?"er":""),"cool");
+    toast(dir==="toPts"?"📈 "+n+" mønt"+(n>1?"er":"")+" → +"+r.g+" point":"📉 Du købte "+n+" mønt"+(n>1?"er":""),"win");
   });
 }
 
 /* ================= MINE TAL ================= */
-function dv(id){var e=document.getElementById(id);return e?parseFloat(e.value)||0:0}
-function myRow(){return {salg:dv("mySalg"),csat:dv("myCsat"),kpt:dv("myKpt"),wrap:dv("myWrap"),conf:dv("myConf")}}
+function dv(id){var e=document.getElementById(id);return e?parseFloat(String(e.value).replace(",","."))||0:0}
+function myRow(){
+  var sales={};
+  activeSales().forEach(function(t){var v=dv("mys_"+t.id);if(v>0)sales[t.id]=v});
+  return {sales:sales,csat:dv("myCsat"),kpt:dv("myKpt"),wrap:dv("myWrap"),conf:dv("myConf")};
+}
+function drawSalesInputs(){
+  var box=document.getElementById("salesInputs");if(!box)return;
+  var sig=activeSales().map(function(t){return t.id+":"+t.n+":"+t.c}).join("|");
+  if(box.dataset.sig===sig)return;          /* tegn kun om, hvis salgstyperne er ændret */
+  var keep={};activeSales().forEach(function(t){var e=document.getElementById("mys_"+t.id);if(e)keep[t.id]=e.value});
+  box.dataset.sig=sig;
+  box.innerHTML=activeSales().map(function(t){
+    return '<div class="inrow"><label>💰 '+esc(t.n)+' <small>'+fmt(t.c)+(t.c===1?' mønt':' mønter')+' pr. stk.</small></label>'+
+      '<input type="number" min="0" id="mys_'+esc(t.id)+'" placeholder="0" value="'+esc(keep[t.id]||"")+'" oninput="calcMine()"></div>';
+  }).join("");
+}
 function calcMine(){
   var p=me();if(!p)return;
-  var r=myRow(),n=coinsForRow(p,r);
-  setTxt("myCoins",n);
+  var b=breakdown(p,myRow());
+  setTxt("myCoins",b.n);
   var d=document.getElementById("myDetail");
-  if(d){
-    var parts=[];
-    if(r.salg)parts.push(Math.floor(r.salg)+" fra salg");
-    if(r.csat>=2)parts.push(Math.floor(r.csat/2)+" fra CSAT");
-    if(r.kpt>6.8)parts.push("1 fra KPT");
-    if(r.wrap>0&&r.wrap<60)parts.push("1 fra wrap up");
-    if(r.conf>80)parts.push("1 fra conformance");
-    if(r.kpt>6.8&&((p.streak||0)+1)%3===0)parts.push("2 i streak-bonus 🔥");
-    d.textContent=parts.length?parts.join(" · "):"Udfyld felterne herover";
-  }
+  var txt=b.parts.map(function(x){return x.l+" = "+fmt(x.v)}).join(" · ");
+  if(b.salesRaw%1>0.001)txt+=" (salg rundes ned til hele mønter)";
+  d.textContent=txt||"Udfyld felterne herover";
 }
 function drawTal(){
-  var p=me();
+  var p=me(),r=R();
   myBar("talMe",(p?"Tast dine tal ind — Oskar godkender dem":""));
-  var mine=pend().filter(function(x){return x.pi===UI.me})[0];
-  var box=document.getElementById("myStatus");
-  if(box){
-    if(!p)box.innerHTML='<div class="sent wait">Vælg dig selv øverst først.</div>';
-    else if(mine)box.innerHTML='<div class="sent wait">⏳ <b>Sendt til godkendelse</b> — '+
-      mine.n+' mønter afventer Oskar. Du kan sende igen, hvis du har tastet forkert.</div>';
-    else box.innerHTML='<div class="sent">✅ Ingen indsendelser venter. Tast dagens tal ind, når du er klar.</div>';
-  }
-  var b=document.getElementById("sendBtn");if(b)b.disabled=!p;
+  drawHeat("talHeat");
+  drawSalesInputs();
+  setTxt("csatLbl","⭐ Antal CSAT med 5 stjerner");
+  setTxt("csatHint","Hver "+(r.csatPer===1?"":r.csatPer+". ")+"giver "+fmt(r.csatCoins)+" mønt");
+  setTxt("kptHint","Over "+fmt(r.kptMin)+" giver "+fmt(r.kptCoins));
+  setTxt("wrapHint","Under "+r.wrapMax+" sek giver "+fmt(r.wrapCoins));
+  setTxt("confHint","Over "+fmt(r.confMin)+" % giver "+fmt(r.confCoins));
+  document.getElementById("talRules").innerHTML=rulesHTML();
+  setTxt("csatExample",r.csatPer>1?("Eksempel: 5 femmere giver "+fmt(Math.floor(5/r.csatPer)*r.csatCoins)+" mønt"+(Math.floor(5/r.csatPer)*r.csatCoins===1?"":"er")+"."):"");
+  var mine=pend().filter(function(x){return x.pi===UI.me})[0],box=document.getElementById("myStatus");
+  if(!p)box.innerHTML='<div class="sent wait">Vælg dig selv øverst først.</div>';
+  else if(mine)box.innerHTML='<div class="sent wait">⏳ <b>Sendt til godkendelse</b> — afventer Oskar. Du kan sende igen, hvis du har tastet forkert.</div>';
+  else box.innerHTML='<div class="sent">✅ Ingen indsendelser venter.</div>';
+  document.getElementById("sendBtn").disabled=!p;
   calcMine();
 }
 function submitMine(){
-  var p=me();if(!p){openWho();return}
+  if(!me()){openWho();return}
   var r=myRow();
-  if(!r.salg&&!r.csat&&!r.kpt&&!r.wrap&&!r.conf){toast("Udfyld mindst ét felt","bad");return}
+  if(!Object.keys(r.sales).length&&!r.csat&&!r.kpt&&!r.wrap&&!r.conf){toast("Udfyld mindst ét felt","bad");return}
   send({type:"submit",pi:UI.me,row:r},function(res){
     if(res&&res.err){toast(res.err,"bad");return}
-    toast("📨 Sendt til godkendelse — "+(res?res.n:0)+" mønter","cool");
-    ["mySalg","myCsat","myKpt","myWrap","myConf"].forEach(function(id){
-      var e=document.getElementById(id);if(e)e.value="";});
+    toast("📨 Sendt til godkendelse — "+res.n+" mønter","cool");
+    Array.prototype.forEach.call(document.querySelectorAll("#v-tal input[type=number]"),function(e){e.value=""});
     calcMine();
   });
 }
 
 /* ================= ADMIN ================= */
+function pendVals(it){
+  var r=R(),h="";
+  r.sales.forEach(function(t){var k=salesCount(it,t.id,r);if(k)h+='<span class="pv">'+esc(t.n)+' <b>'+k+'</b></span>'});
+  h+='<span class="pv'+(it.csat?'':' no')+'">CSAT 5⭐ <b>'+it.csat+'</b></span>'+
+     '<span class="pv'+(it.kpt?'':' no')+'">KPT <b>'+fmt(it.kpt)+'</b></span>'+
+     '<span class="pv'+(it.wrap?'':' no')+'">Wrap <b>'+it.wrap+'s</b></span>'+
+     '<span class="pv'+(it.conf?'':' no')+'">Conf <b>'+fmt(it.conf)+'%</b></span>';
+  return h;
+}
 function drawPending(){
-  var e=document.getElementById("pendList");if(!e)return;
-  var list=pend();
+  var e=document.getElementById("pendList"),list=pend();
   setTxt("pendCount",list.length?list.length+" venter":"Ingen venter");
-  var ab=document.getElementById("approveAllBtn");
-  if(!list.length){e.innerHTML='<p class="hint" style="margin:0">Ingen indsendelser lige nu.</p>';if(ab)ab.disabled=true;return}
-  if(ab)ab.disabled=false;
-  var h="";
-  list.forEach(function(it){
-    var q=S.players[it.pi]||{name:"?",icon:"❓",color:"#eee"};
-    var t=new Date(it.at);
-    h+='<div class="pend"><div class="ava" style="background:'+q.color+'">'+q.icon+'</div>'+
-       '<div style="min-width:120px"><div class="pname">'+esc(q.name)+'</div>'+
-       '<div class="pmeta">'+("0"+t.getHours()).slice(-2)+"."+("0"+t.getMinutes()).slice(-2)+'</div></div>'+
-       '<div class="vals">'+
-         '<span class="pv'+(it.salg?'':' no')+'">Salg <b>'+it.salg+'</b></span>'+
-         '<span class="pv'+(it.csat?'':' no')+'">CSAT <b>'+it.csat+'</b></span>'+
-         '<span class="pv'+(it.kpt?'':' no')+'">KPT <b>'+it.kpt+'</b></span>'+
-         '<span class="pv'+(it.wrap?'':' no')+'">Wrap <b>'+it.wrap+'s</b></span>'+
-         '<span class="pv'+(it.conf?'':' no')+'">Conf <b>'+it.conf+'%</b></span></div>'+
-       '<span class="pcoins">🪙 '+it.n+'</span>'+
-       '<div class="acts"><button class="big sm grn" onclick="approve(\''+it.id+'\')">Godkend</button>'+
-       '<button class="ghost warn" onclick="reject(\''+it.id+'\')">Afvis</button></div></div>';
-  });
-  e.innerHTML=h;
+  document.getElementById("approveAllBtn").disabled=!list.length;
+  if(!list.length){e.innerHTML='<p class="hint" style="margin:0">Ingen indsendelser lige nu.</p>';return}
+  e.innerHTML=list.map(function(it){
+    var q=S.players[it.pi]||{name:"?",icon:"❓",color:"#eee"},t=new Date(it.at);
+    var n=breakdown(q,it).n;   /* altid beregnet med de nuværende regler */
+    return '<div class="pend"><div class="ava" style="background:'+q.color+'">'+q.icon+'</div>'+
+      '<div style="min-width:120px"><div class="pname">'+esc(q.name)+'</div><div class="pmeta">'+("0"+t.getHours()).slice(-2)+"."+("0"+t.getMinutes()).slice(-2)+'</div></div>'+
+      '<div class="vals">'+pendVals(it)+'</div><span class="pcoins">🪙 '+n+'</span>'+
+      '<div class="acts"><button class="big sm grn" onclick="approve(\''+it.id+'\')">Godkend</button>'+
+      '<button class="ghost warn" onclick="reject(\''+it.id+'\')">Afvis</button></div></div>';
+  }).join("");
 }
 function approve(id){send({type:"approve",by:UI.me,pin:UI.pin,id:id},function(r){
-  if(r&&r.err){toast(r.err,"bad");return}
-  toast("✅ Godkendt — "+(r?r.n:0)+" mønter til "+(r?r.name:""),"win")})}
+  if(r&&r.err){toast(r.err,"bad");return}toast("✅ Godkendt — "+r.n+" mønter til "+r.name,"win")})}
 function reject(id){send({type:"reject",by:UI.me,pin:UI.pin,id:id},function(r){
-  if(r&&r.err){toast(r.err,"bad");return}
-  toast("↩️ Afvist — "+(r?r.name:"")+" kan taste igen","cool")})}
+  if(r&&r.err){toast(r.err,"bad");return}toast("↩️ Afvist — "+r.name+" kan taste igen","cool")})}
 function approveAll(){
-  if(!pend().length)return;
-  if(!confirm("Godkend alle "+pend().length+" indsendelser?"))return;
+  if(!pend().length||!confirm("Godkend alle "+pend().length+" indsendelser?"))return;
   send({type:"approveAll",by:UI.me,pin:UI.pin},function(r){
     if(r&&r.err){toast(r.err,"bad");return}
-    if(r&&r.tot){toast("🪙 "+r.tot+" mønter udbetalt til "+r.who,"win");burst(130)}
+    if(r.tot){toast("🪙 "+r.tot+" mønter udbetalt til "+r.who,"win");burst(130)}
   });
 }
+
+/* ---------- regel-editor ---------- */
+function rDraft(){if(!UI.rdraft)UI.rdraft=clone(R());return UI.rdraft}
+function rDirty(){return JSON.stringify(rDraft())!==JSON.stringify(R())}
+function rFlag(){
+  var b=document.getElementById("rulesSaveBtn");b.disabled=!rDirty();b.textContent=rDirty()?"💾 Gem regler":"✓ Gemt";
+  setTxt("rulesDirty",rDirty()?"Du har ændringer, der ikke er gemt.":"");
+  var d=rDraft(),ex=breakdown({streak:0},{sales:{},csat:0,kpt:0,wrap:0,conf:0},d);
+  var sample={sales:{},csat:5,kpt:d.kptMin+0.2,wrap:Math.max(1,d.wrapMax-8),conf:d.confMin+5};
+  if(d.sales[0])sample.sales[d.sales[0].id]=2;
+  setTxt("rulesSample","Eksempel med de nye regler: 2 salg, 5 CSAT-femmere og alle KPI'er i hus giver "+breakdown({streak:0},sample,d).n+" mønter.");
+}
+function drawRulesEditor(){
+  var d=rDraft();
+  document.getElementById("salesEdit").innerHTML=d.sales.map(function(t,i){
+    return '<tr class="'+(t.on?"":"offrow")+'"><td><input type="text" value="'+esc(t.n)+'" oninput="edSale('+i+',\'n\',this.value)" placeholder="Fx Mobilabonnement"></td>'+
+      '<td><input type="number" min="0" max="50" step="0.5" value="'+t.c+'" oninput="edSale('+i+',\'c\',this.value)"></td>'+
+      '<td><label class="sw"><input type="checkbox"'+(t.on?" checked":"")+' onchange="edSale('+i+',\'on\',this.checked)"> '+(t.on?"Aktiv":"Skjult")+'</label></td>'+
+      '<td><button class="ghost mini warn" onclick="rmSale('+i+')">✕</button></td></tr>';
+  }).join("");
+  var f=function(id,k){var e=document.getElementById(id);if(e&&document.activeElement!==e)e.value=d[k]};
+  f("r_csatPer","csatPer");f("r_csatCoins","csatCoins");f("r_kptMin","kptMin");f("r_kptCoins","kptCoins");
+  f("r_wrapMax","wrapMax");f("r_wrapCoins","wrapCoins");f("r_confMin","confMin");f("r_confCoins","confCoins");
+  f("r_streakDays","streakDays");f("r_streakCoins","streakCoins");f("r_heat","heat");
+  rFlag();
+}
+function edSale(i,k,v){var d=rDraft();if(!d.sales[i])return;
+  d.sales[i][k]=k==="c"?(parseFloat(String(v).replace(",","."))||0):v;
+  if(k==="on")drawRulesEditor();else rFlag()}
+function addSale(){rDraft().sales.push({id:"",n:"",c:1,on:true});drawRulesEditor()}
+function rmSale(i){var d=rDraft();if(d.sales.length<=1){toast("Der skal være mindst én salgstype","bad");return}
+  if(!confirm("Fjern salgstypen "+(d.sales[i].n||"")+"?\n\nVil du bare skjule den midlertidigt, så fjern fluebenet i stedet."))return;
+  d.sales.splice(i,1);drawRulesEditor()}
+function edRule(k,v){var d=rDraft();d[k]=k==="heat"?v:(parseFloat(String(v).replace(",","."))||0);rFlag()}
+function resetRulesDraft(){UI.rdraft=null;drawRulesEditor()}
+function saveRules(){
+  send({type:"rulesSave",by:UI.me,pin:UI.pin,rules:rDraft()},function(r){
+    if(r&&r.err){toast(r.err,"bad");return}
+    UI.rdraft=null;if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
+    toast("⚙️ Reglerne er gemt","win");render();
+  });
+}
+function resetRules(){
+  if(!confirm("Sæt værdierne tilbage til standard?\n\nSalgstyperne beholdes. Heat-teksten fjernes."))return;
+  send({type:"rulesReset",by:UI.me,pin:UI.pin},function(r){
+    if(r&&r.err){toast(r.err,"bad");return}
+    UI.rdraft=null;toast("⚙️ Standardværdier er sat","cool");render();
+  });
+}
+
+/* ---------- spil-editor ---------- */
+function gDraft(){if(!UI.gdraft)UI.gdraft=clone(S.games);return UI.gdraft}
+function gDirty(){return JSON.stringify(gDraft())!==JSON.stringify(S.games)}
+function gFlag(){var b=document.getElementById("gamesSaveBtn");b.disabled=!gDirty();b.textContent=gDirty()?"💾 Gem spil":"✓ Gemt";
+  setTxt("gamesDirty",gDirty()?"Du har ændringer, der ikke er gemt.":"")}
+function drawGamesEditor(){
+  var d=gDraft();
+  document.getElementById("gamesEdit").innerHTML=GAMES.map(function(g){
+    var i=-1;d.forEach(function(x,k){if(x.id===g.id)i=k});
+    var cfg=d[i]||{on:true,cap:0};
+    return '<tr class="'+(cfg.on?"":"offrow")+'"><td style="font-size:22px">'+g.ic+'</td><td><b>'+g.n+'</b></td>'+
+      '<td><label class="sw"><input type="checkbox"'+(cfg.on?" checked":"")+' onchange="edGame('+i+',\'on\',this.checked)"> '+(cfg.on?"Åbent":"Lukket")+'</label></td>'+
+      '<td><input type="number" min="0" max="999" value="'+cfg.cap+'" oninput="edGame('+i+',\'cap\',this.value)"></td>'+
+      '<td class="pmeta">'+(cfg.cap?"maks "+cfg.cap+" point pr. person pr. dag":"ingen grænse")+'</td></tr>';
+  }).join("");
+  gFlag();
+}
+function edGame(i,k,v){var d=gDraft();if(!d[i])return;d[i][k]=k==="cap"?Math.max(0,Math.min(999,parseInt(v,10)||0)):v;
+  if(k==="on")drawGamesEditor();else gFlag()}
+function resetGamesDraft(){UI.gdraft=null;drawGamesEditor()}
+function saveGames(){send({type:"gamesSave",by:UI.me,pin:UI.pin,items:gDraft()},function(r){
+  if(r&&r.err){toast(r.err,"bad");return}UI.gdraft=null;
+  if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();toast("🎮 Spillene er gemt","win");render()})}
+function resetCaps(){if(!confirm("Nulstil dagens grænser for alle?"))return;
+  send({type:"resetCaps",by:UI.me,pin:UI.pin},function(r){if(r&&r.err){toast(r.err,"bad");return}toast("♻️ Grænserne er nulstillet","cool")})}
 
 /* ---------- kiosk-editor ---------- */
-function shopDraft(){
-  if(!UI.draft)UI.draft=clone(shopList());
-  return UI.draft;
-}
+function shopDraft(){if(!UI.draft)UI.draft=clone(shopList());return UI.draft}
+function sDirty(){return JSON.stringify(shopDraft())!==JSON.stringify(shopList())}
+function sFlag(){var b=document.getElementById("shopSaveBtn");b.disabled=!sDirty();b.textContent=sDirty()?"💾 Gem kiosken":"✓ Gemt";
+  setTxt("shopDirty",sDirty()?"Du har ændringer, der ikke er gemt.":"")}
 function drawShopEditor(){
-  var e=document.getElementById("shopEdit");if(!e)return;
-  var d=shopDraft(),h="";
-  d.forEach(function(it,i){
-    h+='<tr class="'+(it.out?"soldrow":"")+'">'+
-      '<td><input class="ic-in" value="'+esc(it.ic)+'" oninput="edShop('+i+',\'ic\',this.value)"></td>'+
-      '<td><input type="text" value="'+esc(it.n)+'" oninput="edShop('+i+',\'n\',this.value)" placeholder="Navn"></td>'+
-      '<td><input type="text" class="desc-in" value="'+esc(it.d)+'" oninput="edShop('+i+',\'d\',this.value)" placeholder="Kort beskrivelse"></td>'+
+  var d=shopDraft();
+  document.getElementById("shopEdit").innerHTML=d.map(function(it,i){
+    return '<tr class="'+(it.out?"soldrow":"")+'"><td><input class="ic-in" value="'+esc(it.ic)+'" oninput="edShop('+i+',\'ic\',this.value)"></td>'+
+      '<td><input type="text" value="'+esc(it.n)+'" oninput="edShop('+i+',\'n\',this.value)"></td>'+
+      '<td><input type="text" class="desc-in" value="'+esc(it.d)+'" oninput="edShop('+i+',\'d\',this.value)"></td>'+
       '<td><input type="number" min="1" value="'+it.c+'" oninput="edShop('+i+',\'c\',this.value)"></td>'+
       '<td><label class="sw"><input type="checkbox"'+(it.out?" checked":"")+' onchange="edShop('+i+',\'out\',this.checked)"> Udsolgt</label></td>'+
-      '<td style="white-space:nowrap">'+
-        '<button class="ghost mini" onclick="mvShop('+i+',-1)"'+(i===0?" disabled":"")+'>↑</button>'+
-        '<button class="ghost mini" onclick="mvShop('+i+',1)"'+(i===d.length-1?" disabled":"")+'>↓</button>'+
-        '<button class="ghost mini warn" onclick="rmShop('+i+')">✕</button></td></tr>';
-  });
-  e.innerHTML=h;
-  var dirty=JSON.stringify(d)!==JSON.stringify(shopList());
-  var sv=document.getElementById("shopSaveBtn");
-  if(sv){sv.disabled=!dirty;sv.textContent=dirty?"💾 Gem kiosken":"✓ Gemt"}
-  setTxt("shopDirty",dirty?"Du har ændringer, der ikke er gemt.":"");
+      '<td style="white-space:nowrap"><button class="ghost mini" onclick="mvShop('+i+',-1)"'+(i===0?" disabled":"")+'>↑</button>'+
+      '<button class="ghost mini" onclick="mvShop('+i+',1)"'+(i===d.length-1?" disabled":"")+'>↓</button>'+
+      '<button class="ghost mini warn" onclick="rmShop('+i+')">✕</button></td></tr>';
+  }).join("");
+  sFlag();
 }
-function edShop(i,k,v){
-  var d=shopDraft();if(!d[i])return;
-  if(k==="c")v=Math.max(1,parseInt(v,10)||1);
-  d[i][k]=v;
-  if(k==="out")drawShopEditor();
-  else{
-    var dirty=JSON.stringify(d)!==JSON.stringify(shopList());
-    var sv=document.getElementById("shopSaveBtn");
-    if(sv){sv.disabled=!dirty;sv.textContent=dirty?"💾 Gem kiosken":"✓ Gemt"}
-    setTxt("shopDirty",dirty?"Du har ændringer, der ikke er gemt.":"");
-  }
-}
+function edShop(i,k,v){var d=shopDraft();if(!d[i])return;if(k==="c")v=Math.max(1,parseInt(v,10)||1);d[i][k]=v;
+  if(k==="out")drawShopEditor();else sFlag()}
 function addShop(){shopDraft().push({id:"",ic:"🎁",n:"Ny vare",d:"",c:50,out:false});drawShopEditor()}
-function rmShop(i){
-  var d=shopDraft();
-  if(d.length<=1){toast("Kiosken skal have mindst én vare","bad");return}
-  if(!confirm("Fjern "+(d[i].n||"varen")+" fra kiosken?"))return;
-  d.splice(i,1);drawShopEditor();
-}
+function rmShop(i){var d=shopDraft();if(d.length<=1){toast("Kiosken skal have mindst én vare","bad");return}
+  if(!confirm("Fjern "+d[i].n+"?"))return;d.splice(i,1);drawShopEditor()}
 function mvShop(i,dir){var d=shopDraft(),j=i+dir;if(j<0||j>=d.length)return;var t=d[i];d[i]=d[j];d[j]=t;drawShopEditor()}
 function resetShopDraft(){UI.draft=null;drawShopEditor()}
-function saveShop(){
-  var d=shopDraft();
-  send({type:"shopSave",by:UI.me,pin:UI.pin,items:d},function(r){
-    if(r&&r.err){toast(r.err,"bad");return}
-    UI.draft=null;if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();toast("🏪 Kiosken er gemt","win");render();
-  });
-}
+function saveShop(){send({type:"shopSave",by:UI.me,pin:UI.pin,items:shopDraft()},function(r){
+  if(r&&r.err){toast(r.err,"bad");return}UI.draft=null;
+  if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();toast("🏪 Kiosken er gemt","win");render()})}
 
-/* ---------- boers-indstillinger ---------- */
 function drawExEditor(){
-  var ex=exRates();
-  var a=document.getElementById("exOn"),b=document.getElementById("exSell"),c=document.getElementById("exBuy");
-  if(a&&document.activeElement!==a)a.checked=!!ex.on;
-  if(b&&document.activeElement!==b)b.value=ex.sell;
-  if(c&&document.activeElement!==c)c.value=ex.buy;
-  exHint();
+  var ex=exRates(),a=document.getElementById("exOn"),b=document.getElementById("exSell"),c=document.getElementById("exBuy");
+  if(document.activeElement!==a)a.checked=!!ex.on;
+  if(document.activeElement!==b)b.value=ex.sell;
+  if(document.activeElement!==c)c.value=ex.buy;
 }
-function exHint(){
-  var s=parseInt((document.getElementById("exSell")||{}).value,10)||0;
-  var b=parseInt((document.getElementById("exBuy")||{}).value,10)||0;
-  var t=b<=s?"⚠️ Købsprisen skal være højere end salgsprisen.":
-    "Sælger man 1 mønt, får man "+s+" point. Køber man 1 mønt, koster det "+b+" point. "+
-    "Et spil giver i snit ca. 2–3 point pr. mønt"+(s>=3?" — med "+s+" point kan det betale sig at springe spillene over.":".");
-  setTxt("exHint",t);
-}
-function saveEx(){
-  var on=document.getElementById("exOn").checked;
-  var sell=document.getElementById("exSell").value,buy=document.getElementById("exBuy").value;
-  send({type:"exSave",by:UI.me,pin:UI.pin,on:on,sell:sell,buy:buy},function(r){
-    if(r&&r.err){toast(r.err,"bad");return}
-    toast("📊 Børsen er opdateret","win");
-  });
-}
+function saveEx(){send({type:"exSave",by:UI.me,pin:UI.pin,on:document.getElementById("exOn").checked,
+  sell:document.getElementById("exSell").value,buy:document.getElementById("exBuy").value},function(r){
+  if(r&&r.err){toast(r.err,"bad");return}toast("📊 Børsen er opdateret","win")})}
 
-function drawAdmin(){
-  var adm=iAmAdmin();
-  var body=document.getElementById("adminBody"),gate=document.getElementById("adminGate");
-  if(body)body.style.display=adm?"":"none";
-  if(gate)gate.style.display=adm?"none":"";
-  setTxt("adminWho",adm?"Du er logget ind som administrator."
-    :(isAdminAcct()?"Låst — indtast koden for at få adgang.":"Kun Oskar har adgang her. Brug »Mine tal« i stedet."));
-  var gb=document.getElementById("gateBtn");if(gb)gb.style.display=isAdminAcct()?"":"none";
-  if(!adm)return;
-  drawPending();
-  /* manuel tabel: tegnes ikke om mens man skriver i den */
-  var tb=document.getElementById("adminRows");
-  var typing=tb&&tb.contains(document.activeElement);
-  if(!typing){
-    var h="";
-    S.players.forEach(function(p,i){
-      var d=UI.day[i]||{};
-      h+='<tr><td><div class="ava" style="background:'+p.color+'">'+p.icon+'</div></td>'+
-         '<td><input type="text" value="'+esc(p.name)+'" onchange="renameP('+i+',this.value)">'+
-           '<div class="pmeta">'+(p.streak?"🔥 "+p.streak+" dage":"")+'</div></td>'+
-         '<td><input type="number" min="0" id="sa'+i+'" value="'+(d.salg||"")+'" oninput="calcRow('+i+')"></td>'+
-         '<td><input type="number" min="0" id="cs'+i+'" value="'+(d.csat||"")+'" oninput="calcRow('+i+')"></td>'+
-         '<td><input type="number" min="0" step="0.01" id="kp'+i+'" value="'+(d.kpt||"")+'" oninput="calcRow('+i+')"></td>'+
-         '<td><input type="number" min="0" id="wr'+i+'" value="'+(d.wrap||"")+'" oninput="calcRow('+i+')"></td>'+
-         '<td><input type="number" min="0" max="100" step="0.1" id="co'+i+'" value="'+(d.conf||"")+'" oninput="calcRow('+i+')"></td>'+
-         '<td class="gain" id="gn'+i+'">0</td>'+
-         '<td><b style="font-family:Fredoka">'+p.coins+'</b></td></tr>';
-    });
-    tb.innerHTML=h;
-    S.players.forEach(function(p,i){calcRow(i)});
-  }
-  var ed=document.getElementById("shopEdit");
-  if(!(ed&&ed.contains(document.activeElement)))drawShopEditor();
-  drawExEditor();
-  setTxt("shareLink",shareUrl());
-  var ls=document.getElementById("lockState");
-  if(ls)ls.innerHTML=isLocked()
-    ? "⏳ <b>Pre-launch aktiv</b> — spillene åbner "+openText()+" ("+countdown()+" tilbage)."
-    : "🎉 <b>Spillehallen er åben</b> — alle kan spille.";
-  drawOrders();
+/* ---------- manuel indtastning ---------- */
+function drawAdminTable(){
+  var tb=document.getElementById("adminRows"),head=document.getElementById("adminHead");
+  if(tb.contains(document.activeElement))return;
+  var sales=activeSales();
+  head.innerHTML='<th></th><th>Medarbejder</th>'+sales.map(function(t){return '<th>'+esc(t.n)+'</th>'}).join("")+
+    '<th>CSAT 5⭐<br><small>antal</small></th><th>KPT</th><th>Wrap (sek)</th><th>Conf %</th><th>Mønter</th><th>Beholdning</th>';
+  tb.innerHTML=S.players.map(function(p,i){
+    var d=UI.day[i]||{sales:{}};
+    return '<tr><td><div class="ava" style="background:'+p.color+'">'+p.icon+'</div></td>'+
+      '<td><input type="text" value="'+esc(p.name)+'" onchange="renameP('+i+',this.value)"><div class="pmeta">'+(p.streak?"🔥 "+p.streak+" dage":"")+'</div></td>'+
+      sales.map(function(t){return '<td><input type="number" min="0" id="as_'+i+'_'+esc(t.id)+'" value="'+((d.sales||{})[t.id]||"")+'" oninput="calcRow('+i+')"></td>'}).join("")+
+      '<td><input type="number" min="0" id="cs'+i+'" value="'+(d.csat||"")+'" oninput="calcRow('+i+')"></td>'+
+      '<td><input type="number" min="0" step="0.01" id="kp'+i+'" value="'+(d.kpt||"")+'" oninput="calcRow('+i+')"></td>'+
+      '<td><input type="number" min="0" id="wr'+i+'" value="'+(d.wrap||"")+'" oninput="calcRow('+i+')"></td>'+
+      '<td><input type="number" min="0" max="100" step="0.1" id="co'+i+'" value="'+(d.conf||"")+'" oninput="calcRow('+i+')"></td>'+
+      '<td class="gain" id="gn'+i+'">0</td><td><b style="font-family:Fredoka">'+p.coins+'</b></td></tr>';
+  }).join("");
+  S.players.forEach(function(p,i){calcRow(i)});
 }
-function drawOrders(){
-  var e=document.getElementById("orders");if(!e)return;
-  var byId={};shopList().forEach(function(it){byId[it.id]=it});
-  var tot={},h="",any=false;
-  S.players.forEach(function(p){
-    if(!p.bought.length)return;
-    any=true;
-    var cnt={};p.bought.forEach(function(id){cnt[id]=(cnt[id]||0)+1;tot[id]=(tot[id]||0)+1});
-    h+='<div class="orow"><div class="ava" style="background:'+p.color+'">'+p.icon+'</div>'+
-       '<b style="min-width:110px">'+esc(p.name)+'</b><div class="ochips">'+
-       Object.keys(cnt).map(function(id){var it=byId[id]||{ic:"❔",n:id};
-         return '<span class="pv">'+esc(it.ic)+' '+esc(it.n)+' <b>×'+cnt[id]+'</b></span>'}).join("")+
-       '</div></div>';
-  });
-  if(!any){e.innerHTML='<p class="hint" style="margin:0">Ingen har købt noget endnu.</p>';return}
-  var sum='<div class="osum"><b>Skal købes ind i alt:</b> '+Object.keys(tot).map(function(id){
-    var it=byId[id]||{ic:"❔",n:id};return esc(it.ic)+' '+esc(it.n)+' ×'+tot[id]}).join(" · ")+'</div>';
-  e.innerHTML=sum+h;
-}
-function val(id){var e=document.getElementById(id);return e?parseFloat(e.value)||0:0}
 function rowCalc(i){
-  var p=S.players[i];
-  var r={salg:val("sa"+i),csat:val("cs"+i),kpt:val("kp"+i),wrap:val("wr"+i),conf:val("co"+i)};
-  return {pi:i,n:coinsForRow(p,r),salg:r.salg,csat:r.csat,kpt:r.kpt,wrap:r.wrap,conf:r.conf};
+  var sales={};activeSales().forEach(function(t){var v=dv("as_"+i+"_"+t.id);if(v>0)sales[t.id]=v});
+  var r={pi:i,sales:sales,csat:dv("cs"+i),kpt:dv("kp"+i),wrap:dv("wr"+i),conf:dv("co"+i)};
+  r.n=breakdown(S.players[i],r).n;return r;
 }
-function calcRow(i){
-  var r=rowCalc(i);setTxt("gn"+i,r.n);
-  UI.day[i]={salg:val("sa"+i)||"",csat:val("cs"+i)||"",kpt:val("kp"+i)||"",wrap:val("wr"+i)||"",conf:val("co"+i)||""};
-}
+function calcRow(i){var r=rowCalc(i);setTxt("gn"+i,r.n);UI.day[i]={sales:r.sales,csat:r.csat||"",kpt:r.kpt||"",wrap:r.wrap||"",conf:r.conf||""}}
 function payout(){
-  var rows=S.players.map(function(p,i){return rowCalc(i)}).filter(function(r){return r.n>0});
+  var rows=S.players.map(function(p,i){return rowCalc(i)}).filter(function(r){return r.n>0||r.kpt});
   if(!rows.length){toast("Ingen tal indtastet","bad");return}
   send({type:"payout",by:UI.me,pin:UI.pin,rows:rows},function(r){
     if(r&&r.err){toast(r.err,"bad");return}
     UI.day={};
-    var ph=document.getElementById("payHint");
-    if(ph)ph.innerHTML=(r&&r.tot)?"✅ Udbetalte <b>"+r.tot+" mønter</b> til "+r.who+" medarbejdere.":"Ingen tal indtastet.";
-    if(r&&r.tot){toast("🪙 "+r.tot+" mønter udbetalt","win");burst(110)}
-    document.activeElement&&document.activeElement.blur&&document.activeElement.blur();
+    document.getElementById("payHint").innerHTML=r.tot?"✅ Udbetalte <b>"+r.tot+" mønter</b> til "+r.who+" medarbejdere.":"Ingen mønter at udbetale.";
+    if(r.tot){toast("🪙 "+r.tot+" mønter udbetalt","win");burst(110)}
+    if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
     render();
   });
 }
-function clearDay(){UI.day={};document.activeElement&&document.activeElement.blur&&document.activeElement.blur();render()}
-function renameP(i,v){send({type:"rename",by:UI.me,pin:UI.pin,pi:i,name:v},function(r){
-  if(r&&r.err)toast(r.err,"bad"); else toast("✏️ Navn gemt","cool")})}
+function clearDay(){UI.day={};if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();render()}
+function renameP(i,v){send({type:"rename",by:UI.me,pin:UI.pin,pi:i,name:v},function(r){if(r&&r.err)toast(r.err,"bad");else toast("✏️ Navn gemt","cool")})}
 function addPlayer(){send({type:"addPlayer",by:UI.me,pin:UI.pin})}
-function shareUrl(){return (location.origin+location.pathname).replace(/index\.html$/,"")}
-function copyLink(){
-  var t=shareUrl();
-  if(navigator.clipboard)navigator.clipboard.writeText(t).then(function(){toast("🔗 Link kopieret","cool")});
-  else toast("Kopier linket fra feltet","cool");
+
+function drawAdmin(){
+  var adm=iAmAdmin();
+  document.getElementById("adminBody").style.display=adm?"":"none";
+  document.getElementById("adminGate").style.display=adm?"none":"";
+  setTxt("adminWho",adm?"Du er logget ind som administrator.":(isAdminAcct()?"Låst — indtast koden.":"Kun Oskar har adgang her."));
+  document.getElementById("gateBtn").style.display=isAdminAcct()?"":"none";
+  if(!adm)return;
+  drawPending();
+  var ids=[["rulesBox",drawRulesEditor],["gamesEdit",drawGamesEditor],["shopEdit",drawShopEditor]];
+  ids.forEach(function(x){var e=document.getElementById(x[0]);if(!e.contains(document.activeElement))x[1]()});
+  drawAdminTable();
+  drawExEditor();
+  setTxt("shareLink",location.origin+"/");
+  document.getElementById("lockState").innerHTML=isLocked()?"⏳ <b>Pre-launch aktiv</b> — spillene åbner "+openText()+".":"🎉 <b>Spillehallen er åben</b>.";
+  drawOrders();
 }
-function clearOrders(){
-  if(!confirm("Marker alle bestillinger som udleveret? Listen nulstilles."))return;
-  send({type:"clearOrders",by:UI.me,pin:UI.pin},function(r){
-    if(r&&r.err){toast(r.err,"bad");return}
-    toast("✅ Bestillinger ryddet","cool");
+function drawOrders(){
+  var e=document.getElementById("orders"),byId={},tot={},h="",any=false;
+  shopList().forEach(function(it){byId[it.id]=it});
+  S.players.forEach(function(p){
+    if(!p.bought.length)return;any=true;
+    var cnt={};p.bought.forEach(function(id){cnt[id]=(cnt[id]||0)+1;tot[id]=(tot[id]||0)+1});
+    h+='<div class="orow"><div class="ava" style="background:'+p.color+'">'+p.icon+'</div><b style="min-width:110px">'+esc(p.name)+'</b><div class="ochips">'+
+      Object.keys(cnt).map(function(id){var it=byId[id]||{ic:"❔",n:id};return '<span class="pv">'+esc(it.ic)+' '+esc(it.n)+' <b>×'+cnt[id]+'</b></span>'}).join("")+'</div></div>';
   });
+  e.innerHTML=any?'<div class="osum"><b>Skal købes ind:</b> '+Object.keys(tot).map(function(id){var it=byId[id]||{ic:"❔",n:id};
+    return esc(it.ic)+' '+esc(it.n)+' ×'+tot[id]}).join(" · ")+'</div>'+h:'<p class="hint" style="margin:0">Ingen har købt noget endnu.</p>';
 }
-function setOpenAt(v){send({type:"setOpen",by:UI.me,pin:UI.pin,openAt:v},function(r){
-  if(r&&r.err){toast(r.err,"bad");return}
-  toast(v?"⏳ Pre-launch aktiveret":"🎉 Spillehallen er åben!","cool");if(!v)burst(200);
-})}
-function openMonday(){
-  var d=new Date();d.setHours(8,0,0,0);
-  do{d.setDate(d.getDate()+1)}while(d.getDay()!==1);
-  if(confirm("Lås spillene indtil mandag kl. 08.00 ("+d.toLocaleDateString("da-DK")+")?"))setOpenAt(d.toISOString());
-}
+function copyLink(){navigator.clipboard&&navigator.clipboard.writeText(location.origin+"/").then(function(){toast("🔗 Link kopieret","cool")})}
+function clearOrders(){if(!confirm("Marker alle bestillinger som udleveret?"))return;
+  send({type:"clearOrders",by:UI.me,pin:UI.pin},function(r){if(r&&r.err){toast(r.err,"bad");return}toast("✅ Bestillinger ryddet","cool")})}
+function setOpenAt(v){send({type:"setOpen",by:UI.me,pin:UI.pin,openAt:v},function(r){if(r&&r.err){toast(r.err,"bad");return}
+  toast(v?"⏳ Pre-launch aktiveret":"🎉 Spillehallen er åben!","cool")})}
+function openMonday(){var d=new Date();d.setHours(8,0,0,0);do{d.setDate(d.getDate()+1)}while(d.getDay()!==1);
+  if(confirm("Lås spillene indtil mandag kl. 08.00?"))setOpenAt(d.toISOString())}
 function openNow(){if(confirm("Åbn Spillehallen for alle nu?"))setOpenAt(null)}
-function resetField(){
-  if(!confirm("Nyt minefelt? Felterne nulstilles — point og mønter beholdes."))return;
-  send({type:"newField",by:UI.me,pin:UI.pin},function(r){
-    if(r&&r.err){toast(r.err,"bad");return}
-    toast("💣 Nyt minefelt klar","cool");
-  });
-}
+function resetField(){if(!confirm("Nyt minefelt?"))return;send({type:"newField",by:UI.me,pin:UI.pin},function(r){if(r&&r.err)toast(r.err,"bad");else toast("💣 Nyt minefelt klar","cool")})}
 function newSeason(){
   var w=S.players.slice().sort(function(a,b){return b.pts-a.pts})[0];
-  if(!confirm("Afslut sæson "+S.season+"?"+(w?"\n\nVinder: "+w.name+" med "+w.pts+" point.":"")+
-    "\n\nMønter og point nulstilles. Kiosk og børs beholdes."))return;
-  send({type:"newSeason",by:UI.me,pin:UI.pin},function(r){
-    if(r&&r.err){toast(r.err,"bad");return}
-    if(w){toast("🏆 "+w.name+" vandt sæsonen!","win");burst(320)}
-  });
+  if(!confirm("Afslut sæson "+S.season+"?"+(w?"\n\nVinder: "+w.name+" med "+w.pts+" point.":"")+"\n\nMønter og point nulstilles. Regler, kiosk, børs og spil beholdes."))return;
+  send({type:"newSeason",by:UI.me,pin:UI.pin},function(r){if(r&&r.err){toast(r.err,"bad");return}if(w){toast("🏆 "+w.name+" vandt sæsonen!","win");burst(320)}});
 }
 
 var cfc=document.getElementById("cf"),cfx=cfc.getContext("2d"),bits=[];
 function cfsize(){cfc.width=innerWidth;cfc.height=innerHeight}
 cfsize();addEventListener("resize",cfsize);
-function burst(n){
-  var cols=["#ffd166","#ff6fae","#4cc3f0","#2fbf71","#8b7bf0","#f2545b"];
-  for(var i=0;i<n;i++)bits.push({x:innerWidth/2,y:100,vx:(Math.random()-.5)*13,
-    vy:Math.random()*-11-3,s:5+Math.random()*7,c:cols[i%cols.length],
-    r:Math.random()*6,vr:(Math.random()-.5)*.4,l:1});
-}
+function burst(n){var cols=["#ffd166","#ff6fae","#4cc3f0","#2fbf71","#8b7bf0","#f2545b"];
+  for(var i=0;i<n;i++)bits.push({x:innerWidth/2,y:100,vx:(Math.random()-.5)*13,vy:Math.random()*-11-3,s:5+Math.random()*7,c:cols[i%6],r:Math.random()*6,vr:(Math.random()-.5)*.4,l:1})}
 (function loop(){
   cfx.clearRect(0,0,cfc.width,cfc.height);
   bits=bits.filter(function(b){return b.l>0});
-  bits.forEach(function(b){
-    b.vy+=.32;b.x+=b.vx;b.y+=b.vy;b.r+=b.vr;b.l-=.008;
-    cfx.save();cfx.globalAlpha=Math.max(b.l,0);cfx.translate(b.x,b.y);cfx.rotate(b.r);
-    cfx.fillStyle=b.c;cfx.fillRect(-b.s/2,-b.s/2,b.s,b.s*.62);cfx.restore();
-  });
+  bits.forEach(function(b){b.vy+=.32;b.x+=b.vx;b.y+=b.vy;b.r+=b.vr;b.l-=.008;
+    cfx.save();cfx.globalAlpha=Math.max(b.l,0);cfx.translate(b.x,b.y);cfx.rotate(b.r);cfx.fillStyle=b.c;cfx.fillRect(-b.s/2,-b.s/2,b.s,b.s*.62);cfx.restore()});
   requestAnimationFrame(loop);
 })();
 
@@ -738,18 +707,9 @@ function render(){
   upgradeState(S);
   drawMe();
   var v=UI.view;
-  if(v==="hq")drawHQ();
-  else if(v==="games")drawGames();
-  else if(v==="mine")drawMine();
-  else if(v==="tetris")drawTetrisPage();
-  else if(v==="wheel")drawWheelPage();
-  else if(v==="shoot")drawShootPage();
-  else if(v==="stack")drawStackPage();
-  else if(v==="dig")drawDigPage();
-  else if(v==="board")drawBoard();
-  else if(v==="shop")drawShop();
-  else if(v==="bors")drawBors();
-  else if(v==="tal")drawTal();
-  else if(v==="admin")drawAdmin();
+  if(v==="hq")drawHQ();else if(v==="games")drawGames();else if(v==="mine")drawMine();
+  else if(v==="tetris")drawTetrisPage();else if(v==="wheel")drawWheelPage();else if(v==="shoot")drawShootPage();
+  else if(v==="stack")drawStackPage();else if(v==="dig")drawDigPage();else if(v==="board")drawBoard();
+  else if(v==="shop")drawShop();else if(v==="bors")drawBors();else if(v==="tal")drawTal();else if(v==="admin")drawAdmin();
   setTxt("seasonLbl","Sæson "+S.season);
 }
