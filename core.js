@@ -16,7 +16,13 @@ var BADGES={
   tetris:{i:"🧱",n:"Tetris",d:"Ryddede 6+ rækker i ét spil"},
   streak:{i:"🔥",n:"På stribe",d:"KPT over grænsen flere dage i træk"},
   rich:{i:"💰",n:"Formue",d:"Nåede 50 point på én sæson"},
-  shop:{i:"🛒",n:"Shopaholic",d:"Købte noget i Kiosken"}
+  shop:{i:"🛒",n:"Shopaholic",d:"Købte noget i Kiosken"},
+  fly:{i:"🐦",n:"Pilot",d:"24 huller i Flødebolle-flyveren"},
+  road:{i:"🐸",n:"Trafikhelt",d:"30 rækker i Over vejen"},
+  cookie:{i:"🍪",n:"Mesterbager",d:"6 point i én tur Småkage-klikkeren"},
+  lotto:{i:"🎟️",n:"Lykkens pamfilius",d:"Vandt Lotteriet"},
+  rps:{i:"✊",n:"Håndens mester",d:"Vandt i Sten, saks, papir"},
+  tip:{i:"🔮",n:"Spåmand",d:"Vandt Salgstippet"}
 };
 var DEFAULT_RULES={sales:[{id:"salg",n:"Salg",c:1,on:true}],csatPer:2,csatCoins:1,kptMin:6.8,kptCoins:1,
   wrapMax:60,wrapCoins:1,confMin:80,confCoins:1,streakDays:3,streakCoins:2,heat:""};
@@ -26,7 +32,14 @@ var GAMES=[
   {id:"wheel", ic:"🎡",n:"Lykkehjulet",  d:"Ét spin på få sekunder. Perfekt når du har travlt.",t:"luck",tl:"Rent held"},
   {id:"shoot", ic:"🎯",n:"Skydeteltet",  d:"20 sekunder. Ram slikket, undgå bomberne.",t:"risk",tl:"Tempo"},
   {id:"stack", ic:"🏗️",n:"Stabelspillet",d:"Tim dit klik og byg tårnet så højt du tør.",t:"safe",tl:"Ingen risiko"},
-  {id:"dig",   ic:"⛏️",n:"Guldgraveren", d:"Grav dybere for mere værdi — eller kom op i tide.",t:"risk",tl:"Alt eller intet"}
+  {id:"dig",   ic:"⛏️",n:"Guldgraveren", d:"Grav dybere for mere værdi — eller kom op i tide.",t:"risk",tl:"Alt eller intet"},
+  /* nye spil (okt. 2026) — coin:true = flytter kun mønter mellem spillerne */
+  {id:"fly",   ic:"🐦",n:"Flødebolle-flyveren",d:"Hold flødebollen i luften gennem hullerne. 1 point pr. 4 huller.",t:"skill",tl:"Færdighed"},
+  {id:"road",  ic:"🐸",n:"Over vejen",   d:"30 sekunder. Hop over veje og åer — 1 point pr. 5 rækker.",t:"risk",tl:"Tempo"},
+  {id:"cookie",ic:"🍪",n:"Småkage-klikkeren",d:"30 sekunder. Klik, bag og køb hjælpere, der bager for dig.",t:"safe",tl:"Ingen risiko"},
+  {id:"lotto", ic:"🎟️",n:"Lotteriet",    d:"1 mønt pr. lod. Oskar trækker vinderen, som får hele puljen.",t:"luck",tl:"Rent held",coin:true},
+  {id:"rps",   ic:"✊",n:"Sten, saks, papir",d:"Udfordr en kollega om 1 mønt. Vinderen tager begge.",t:"duel",tl:"Mod en kollega",coin:true},
+  {id:"tip",   ic:"📊",n:"Salgstippet",  d:"Gæt holdets salg i dag inden fristen. Tættest på vinder puljen.",t:"team",tl:"Holdets salg",coin:true}
 ];
 
 var S={field:[],players:[],log:[],last:-1,season:1,best:{},spins:0,openAt:null,pending:[],
@@ -42,6 +55,8 @@ function fmt(n){n=Math.round(n*100)/100;return String(n).replace(".",",")}
 function upgradeState(s){
   s.pending=s.pending||[];s.shop=s.shop||[];s.games=s.games||[];s.players=s.players||[];
   s.ex=s.ex||{on:false,sell:2,buy:5};
+  s.lotto=s.lotto||{t:{},pot:0,max:10,round:1,last:null,hist:[]};s.tip=s.tip||{dl:600,floor:0,carry:0,rounds:[],hist:[]};
+  s.rps=s.rps||{open:[],hist:[]};s.codes=s.codes||{};s.rec=s.rec||{};
   if(!s.rules)s.rules=clone(DEFAULT_RULES);
   Object.keys(DEFAULT_RULES).forEach(function(k){if(s.rules[k]==null)s.rules[k]=clone(DEFAULT_RULES[k])});
   if(!s.rules.sales||!s.rules.sales.length)s.rules.sales=clone(DEFAULT_RULES.sales);
@@ -157,16 +172,19 @@ function canPlay(id){
   return true;
 }
 
-var PAGES=["hq","games","mine","tetris","wheel","shoot","stack","dig","board","shop","bors","tal","admin"];
+var PAGES=["hq","games","mine","tetris","wheel","shoot","stack","dig","fly","road","cookie","lotto","rps","tip","board","shop","bors","tal","admin"];
 function go(v){
   if(typeof shoot!=="undefined"&&shoot.on&&v!=="shoot")shootEnd(true);
   if(typeof stack!=="undefined"&&stack.on&&v!=="stack")stackEnd(true);
   if(typeof dig!=="undefined"&&dig.on&&v!=="dig")digEnd(true);
   if(typeof tet!=="undefined"&&tet.on&&v!=="tetris")tetrisEnd(true);
+  if(typeof fly!=="undefined"&&fly.on&&v!=="fly")flyEnd(true);
+  if(typeof road!=="undefined"&&road.on&&v!=="road")roadEnd(true);
+  if(typeof ck!=="undefined"&&ck.on&&v!=="cookie")ckEnd(true);
   if(v!=="admin"){UI.draft=null;UI.gdraft=null;UI.rdraft=null}
   UI.view=v;
   PAGES.forEach(function(k){var e=document.getElementById("v-"+k);if(e)e.hidden=(k!==v)});
-  var navKey=(["mine","tetris","wheel","shoot","stack","dig"].indexOf(v)>-1)?"games":v;
+  var navKey=(["mine","tetris","wheel","shoot","stack","dig","fly","road","cookie","lotto","rps","tip"].indexOf(v)>-1)?"games":v;
   Array.prototype.forEach.call(document.querySelectorAll("#nav button"),function(b){b.classList.toggle("on",b.dataset.v===navKey)});
   render();
 }
@@ -281,8 +299,10 @@ function drawGames(){
     var dis=isLocked()||off||done,sub;
     if(off)sub='<div class="pmeta closed">Lukket af Oskar</div>';
     else if(done)sub='<div class="pmeta capped">🛑 Dagens grænse nået</div>';
+    else if(g.coin)sub='<div class="pmeta">'+coinSub(g.id)+'</div>';
     else if(cfg.cap&&p)sub='<div class="pmeta">'+left+' af '+cfg.cap+' point tilbage i dag</div>';
-    else sub=S.best[g.id]?'<div class="pmeta">Rekord: '+S.best[g.id]+'</div>':'';
+    else sub=S.best[g.id]?'<div class="pmeta">Rekord: '+S.best[g.id]+'</div>':
+      (S.rec&&S.rec[g.id]?'<div class="pmeta">Rekord: '+S.rec[g.id].v+' · '+esc(S.rec[g.id].n)+'</div>':'');
     h+='<div class="gcard'+(dis?" lockedcard":"")+'" onclick="'+
        (isLocked()?"toast('⏳ Åbner "+openText()+"','bad')":off?"toast('🔒 Spillet er lukket lige nu','bad')":
         done?"toast('🛑 Du har nået dagens grænse her','bad')":"go('"+g.id+"')")+'">'+
@@ -551,8 +571,9 @@ function drawGamesEditor(){
     var cfg=d[i]||{on:true,cap:0};
     return '<tr class="'+(cfg.on?"":"offrow")+'"><td style="font-size:22px">'+g.ic+'</td><td><b>'+g.n+'</b></td>'+
       '<td><label class="sw"><input type="checkbox"'+(cfg.on?" checked":"")+' onchange="edGame('+i+',\'on\',this.checked)"> '+(cfg.on?"Åbent":"Lukket")+'</label></td>'+
+      (g.coin?'<td>–</td><td class="pmeta">flytter kun mønter mellem spillerne</td></tr>':
       '<td><input type="number" min="0" max="999" value="'+cfg.cap+'" oninput="edGame('+i+',\'cap\',this.value)"></td>'+
-      '<td class="pmeta">'+(cfg.cap?"maks "+cfg.cap+" point pr. person pr. dag":"ingen grænse")+'</td></tr>';
+      '<td class="pmeta">'+(cfg.cap?"maks "+cfg.cap+" point pr. person pr. dag":"ingen grænse")+'</td></tr>');
   }).join("");
   gFlag();
 }
@@ -662,6 +683,7 @@ function drawAdmin(){
   setTxt("shareLink",location.origin+"/");
   document.getElementById("lockState").innerHTML=isLocked()?"⏳ <b>Pre-launch aktiv</b> — spillene åbner "+openText()+".":"🎉 <b>Spillehallen er åben</b>.";
   drawOrders();
+  drawNewAdmin();
 }
 function drawOrders(){
   var e=document.getElementById("orders"),byId={},tot={},h="",any=false;
@@ -710,6 +732,8 @@ function render(){
   if(v==="hq")drawHQ();else if(v==="games")drawGames();else if(v==="mine")drawMine();
   else if(v==="tetris")drawTetrisPage();else if(v==="wheel")drawWheelPage();else if(v==="shoot")drawShootPage();
   else if(v==="stack")drawStackPage();else if(v==="dig")drawDigPage();else if(v==="board")drawBoard();
+  else if(v==="fly")drawFlyPage();else if(v==="road")drawRoadPage();else if(v==="cookie")drawCookiePage();
+  else if(v==="lotto")drawLottoPage();else if(v==="rps")drawRpsPage();else if(v==="tip")drawTipPage();
   else if(v==="shop")drawShop();else if(v==="bors")drawBors();else if(v==="tal")drawTal();else if(v==="admin")drawAdmin();
   setTxt("seasonLbl","Sæson "+S.season);
 }

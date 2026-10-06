@@ -71,6 +71,56 @@
 </div><div class="layers" id="gLayers"></div>
 <div class="overlay" id="gOver"><h3 id="gTitle">⛏️ Guldgraveren</h3><p id="gText">Grav dybere for mere værdi — eller kom op i tide.</p><button class="big" id="gBtn" onclick="digStart()">Start — 1 mønt</button></div>
 <div style="display:flex;gap:10px;margin-top:12px"><button class="tapzone" id="gDig" style="margin:0" onclick="digDeeper()" disabled>⛏️ Grav videre</button><button class="tapzone grn" id="gCash" style="margin:0" onclick="digCash()" disabled>🪣 Kom op</button></div></div><div><div class="card"><h2>Stilling</h2><div class="plist" id="digList"></div></div><div class="card" style="margin-top:16px"><p class="hint" style="margin:0">Hvert lag giver mere, men risikoen stiger.</p><button class="ghost" style="width:100%;margin-top:12px" onclick="go('games')">← Spillehallen</button></div></div></div></div>
+<div class="page" id="v-fly" hidden><div class="mybar" id="flyMe"></div><div class="gamewrap"><div class="arena a5"><div class="sbar">
+<div class="sbox"><b id="fHoles">0</b><span>huller</span></div>
+<div class="sbox"><b id="fPts">0</b><span>point</span></div>
+<div class="sbox"><b id="fBest">0</b><span>rekord</span></div>
+<div class="sbox"><b id="fPlayer">–</b><span>spiller</span></div>
+</div><canvas id="flyC" width="720" height="440"></canvas>
+<div class="overlay" id="fOver"><h3 id="fTitle">🐦 Flødebolle-flyveren</h3><p id="fText">Tryk på mellemrum eller klik i billedet for at flyve op gennem hullerne. 1 point pr. 4 huller — maks 6 point pr. tur.</p><button class="big" id="fBtn" onclick="flyStart()">Start — 1 mønt</button></div>
+</div><div><div class="card"><h2>Stilling</h2><div class="plist" id="flyList"></div></div><div class="card" style="margin-top:16px"><p class="hint" style="margin:0">Mellemrum, pil op eller et klik får flødebollen til at flyve op. Banen bliver lidt hurtigere for hvert hul. Efter 24 huller har du maks point, men du kan flyve videre efter rekorden.</p><p class="hint" id="fRec"></p><button class="ghost" style="width:100%;margin-top:12px" onclick="go('games')">← Spillehallen</button></div></div></div></div>
+<div class="page" id="v-road" hidden><div class="mybar" id="roadMe"></div><div class="gamewrap"><div class="arena a6"><div class="sbar">
+<div class="sbox"><b id="rdRows">0</b><span>rækker</span></div>
+<div class="sbox"><b id="rdPts">0</b><span>point</span></div>
+<div class="sbox"><b id="rdTime">30</b><span>sek</span></div>
+<div class="sbox"><b id="rdBest">0</b><span>rekord</span></div>
+<div class="sbox"><b id="rdPlayer">–</b><span>spiller</span></div>
+</div><canvas id="roadC" width="468" height="572"></canvas>
+<div class="overlay" id="rdOver"><h3 id="rdTitle">🐸 Over vejen</h3><p id="rdText">30 sekunder. Hop over veje og åer med piletasterne — undgå bilerne, og hop på stammerne i åen. 1 point pr. 5 rækker — maks 6 point pr. tur.</p><button class="big" id="rdBtn" onclick="roadStart()">Start — 1 mønt</button></div>
+</div><div><div class="card"><h2>Stilling</h2><div class="plist" id="roadList"></div></div><div class="card" style="margin-top:16px"><h2>Styring</h2><div class="keys"><span></span><button onclick="roadMove(0,1)">▲</button><span></span><button onclick="roadMove(-1,0)">◀</button><button onclick="roadMove(0,-1)">▼</button><button onclick="roadMove(1,0)">▶</button></div><p class="hint">Pile eller WASD. Står du på en stamme, flyder du med. Bliver du kørt over eller falder i åen, er turen slut.</p><p class="hint" id="rdRec"></p><button class="ghost" style="width:100%;margin-top:12px" onclick="go('games')">← Spillehallen</button></div></div></div></div>
+<div class="page" id="v-cookie" hidden><div class="mybar" id="cookieMe"></div><div class="gamewrap"><div class="arena a7"><div class="sbar">
+<div class="sbox"><b id="cBest">0</b><span>rekord</span></div>
+<div class="sbox"><b id="cPlayer">–</b><span>spiller</span></div>
+</div><canvas id="cookieC" width="720" height="400"></canvas>
+<div class="ckshop" id="ckShop"></div>
+<div class="overlay" id="cOver"><h3 id="cTitle">🍪 Småkage-klikkeren</h3><p id="cText">30 sekunder. Klik på småkagen for at bage, og brug småkagerne på hjælpere, der bager for dig. 500 bagte småkager giver 1 point — maks 6 point pr. tur.</p><button class="big" id="cBtn" onclick="ckStart()">Start — 1 mønt</button></div>
+</div><div><div class="card"><h2>Stilling</h2><div class="plist" id="cookieList"></div></div><div class="card" style="margin-top:16px"><p class="hint" style="margin:0">🥄 Kagerullen giver +1 småkage pr. klik. 👵 Bedstemor og 🔥 ovnen bager af sig selv. Prisen stiger, hver gang du køber. Klik ud over 12 i sekundet tæller ikke.</p><p class="hint" id="cRec"></p><button class="ghost" style="width:100%;margin-top:12px" onclick="go('games')">← Spillehallen</button></div></div></div></div>
+<div class="page" id="v-lotto" hidden><div class="mybar" id="lottoMe"></div><div class="grid2"><div class="card"><h3>🎟️ Lotteriet</h3>
+<div class="potbox"><span>Puljen</span><b id="lPot">0</b><small>mønter</small></div>
+<p class="hint" style="margin:0 0 6px" id="lMine"></p>
+<div class="qty"><button onclick="lottoStep(-1)">−</button><input id="lottoN" type="number" min="1" max="100" value="1" oninput="drawLottoPage()"><button onclick="lottoStep(1)">+</button></div>
+<button class="tapzone" id="lBtn" onclick="lottoBuy()">Køb 1 lod — 1 mønt</button><p class="hint" id="lHint"></p>
+<p class="hint">1 mønt pr. lod. Jo flere lodder, jo større chance. Oskar trækker vinderen, og vinderen får alle mønterne i puljen.</p>
+<button class="ghost" style="width:100%;margin-top:12px" onclick="go('games')">← Spillehallen</button></div>
+<div><div class="card"><h2>Lodder i denne runde</h2><div id="lList"></div></div><div class="card" style="margin-top:16px"><h2>Seneste vindere</h2><div id="lHist"></div></div></div></div></div>
+<div class="page" id="v-rps" hidden><div class="mybar" id="rpsMe"></div><div class="grid2"><div class="card"><h3>✊ Sten, saks, papir</h3>
+<p class="hint" style="margin:0 0 12px">Begge satser 1 mønt, og vinderen tager begge. Ved uafgjort får I hver jeres mønt tilbage.</p>
+<div id="rCode"></div>
+<h2 style="margin-top:16px">Udfordr</h2><select id="rTo" class="sel"></select>
+<div class="moves" id="rMoves"></div>
+<button class="tapzone" id="rSend" onclick="rpsChallenge()">Send udfordring — 1 mønt</button><p class="hint" id="rState"></p>
+<p class="hint">Dit valg er hemmeligt, indtil modstanderen har valgt. Er udfordringen ikke besvaret, når dagen er slut, får du mønten tilbage. Du kan have 3 åbne udfordringer ad gangen.</p>
+<button class="ghost" style="width:100%;margin-top:12px" onclick="go('games')">← Spillehallen</button></div>
+<div><div class="card"><h2>Udfordringer til dig</h2><div id="rIn"></div></div><div class="card" style="margin-top:16px"><h2>Dine åbne udfordringer</h2><div id="rOut"></div></div><div class="card" style="margin-top:16px"><h2>Seneste kampe</h2><div id="rHist"></div></div></div></div></div>
+<div class="page" id="v-tip" hidden><div class="mybar" id="tipMe"></div><div class="grid2"><div class="card"><h3>📊 Salgstippet</h3>
+<p class="hint" style="margin:0 0 10px" id="tQ"></p>
+<div class="potbox"><span>Puljen</span><b id="tPot">0</b><small id="tPotSub">mønter</small></div>
+<p class="hint" style="margin:0 0 10px;text-align:center" id="tClock"></p>
+<div class="tipin" id="tRow"><input type="number" id="tN" min="0" max="9999" placeholder="Antal salg"><button class="big" id="tBtn" onclick="tipSet()">Tip — 1 mønt</button></div>
+<div id="tState"></div>
+<p class="hint">Ét tip pr. person pr. dag. Tallene er hemmelige indtil fristen. Når Oskar har tastet holdets resultat, får den, der er tættest på, hele puljen. Står flere lige, deler de.</p>
+<button class="ghost" style="width:100%;margin-top:12px" onclick="go('games')">← Spillehallen</button></div>
+<div><div class="card"><h2>Tip</h2><div id="tList"></div></div><div class="card" style="margin-top:16px"><h2>Seneste resultater</h2><div id="tHist"></div></div></div></div></div>
 <div class="page" id="v-board" hidden><div class="podium" id="podium"></div><div class="card" style="margin-top:16px"><h2>Stilling — <span id="seasonLbl2"></span></h2><div class="lb" id="lb"></div></div>
 <div class="card" style="margin-top:16px"><h2>Badges</h2><div class="shop" id="badgeInfo"></div></div></div>
 <div class="page" id="v-shop" hidden><div class="mybar" id="shopMe"></div><div class="shop" id="shop"></div></div>
@@ -111,6 +161,9 @@
 <table class="tbl"><thead><tr><th></th><th>Spil</th><th>Åbent</th><th>Grænse</th><th></th></tr></thead><tbody id="gamesEdit"></tbody></table>
 <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap"><button class="ghost" onclick="resetGamesDraft()">Fortryd</button><button class="ghost warn" onclick="resetCaps()">♻️ Nulstil dagens grænser</button>
 <button class="big sm grn" id="gamesSaveBtn" style="margin-left:auto" onclick="saveGames()">💾 Gem spil</button></div></div>
+<div class="card" style="margin-top:16px" id="tipAdm"></div>
+<div class="card" style="margin-top:16px" id="lottoAdm"></div>
+<div class="card" style="margin-top:16px" id="rpsAdm"></div>
 <div class="card" style="margin-top:16px"><div style="display:flex;align-items:center;gap:12px"><h3 style="margin:0">🏪 Redigér Kiosken</h3><span class="hint" id="shopDirty" style="margin:0;color:#b9895a"></span></div>
 <table class="tbl" style="margin-top:10px"><thead><tr><th>Ikon</th><th>Navn</th><th>Beskrivelse</th><th>Pris</th><th></th><th></th></tr></thead><tbody id="shopEdit"></tbody></table>
 <div style="display:flex;gap:10px;margin-top:14px"><button class="ghost" onclick="addShop()">+ Tilføj vare</button><button class="ghost" onclick="resetShopDraft()">Fortryd</button>

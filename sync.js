@@ -20,7 +20,8 @@ function send(action,cb){
 }
 function busyGame(){
   return (typeof shoot!=="undefined"&&shoot.on)||(typeof stack!=="undefined"&&stack.on)||
-         (typeof wheel!=="undefined"&&wheel.on)||(typeof tet!=="undefined"&&tet.on)||(typeof dig!=="undefined"&&dig.on);
+         (typeof wheel!=="undefined"&&wheel.on)||(typeof tet!=="undefined"&&tet.on)||(typeof dig!=="undefined"&&dig.on)||
+         (typeof fly!=="undefined"&&fly.on)||(typeof road!=="undefined"&&road.on)||(typeof ck!=="undefined"&&ck.on);
 }
 function pull(){
   if(UI.busy||SY.inflight)return;

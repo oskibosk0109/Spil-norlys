@@ -1,6 +1,7 @@
 /* Vercel Serverless Function — delt tilstand for Slik-Arenaen
  * Ligger i repoet som:  api/state.js
  */
+import crypto from "node:crypto";
 const KEY = "arena:state";
 const ENV = process.env;
 const findEnv = (suf) => ENV["KV" + suf] ||
@@ -27,7 +28,10 @@ const DEFAULT_SHOP = [
 const DEFAULT_EX = { on:true, sell:2, buy:5 };
 const DEFAULT_GAMES = [
   { id:"mine", on:true, cap:15 }, { id:"tetris", on:true, cap:12 }, { id:"wheel", on:true, cap:15 },
-  { id:"shoot", on:true, cap:12 }, { id:"stack", on:true, cap:12 }, { id:"dig", on:true, cap:12 }
+  { id:"shoot", on:true, cap:12 }, { id:"stack", on:true, cap:12 }, { id:"dig", on:true, cap:12 },
+  /* nye spil (okt. 2026) — de tre sidste flytter kun mønter mellem spillerne og har ingen pointgrænse */
+  { id:"fly", on:true, cap:12 }, { id:"road", on:true, cap:12 }, { id:"cookie", on:true, cap:12 },
+  { id:"lotto", on:true, cap:0 }, { id:"rps", on:true, cap:0 }, { id:"tip", on:true, cap:0 }
 ];
 /* ---------- MØNTREGLER (redigerbare i Admin) ---------- */
 const DEFAULT_RULES = {
@@ -40,7 +44,9 @@ const DEFAULT_RULES = {
   heat: ""                       /* valgfri tekst, vises som banner */
 };
 const GAME_NAMES = { mine:"Minefeltet", tetris:"Tetris", wheel:"Lykkehjulet",
-                     shoot:"Skydeteltet", stack:"Stabelspillet", dig:"Guldgraveren" };
+                     shoot:"Skydeteltet", stack:"Stabelspillet", dig:"Guldgraveren",
+                     fly:"Flødebolle-flyveren", road:"Over vejen", cookie:"Småkage-klikkeren",
+                     lotto:"Lotteriet", rps:"Sten, saks, papir", tip:"Salgstippet" };
 
 async function redis(cmd) {
   const r = await fetch(URL_, { method:"POST",
@@ -101,6 +107,12 @@ function upgrade(s) {
   if (!s.rules) s.rules = clone(DEFAULT_RULES);
   Object.keys(DEFAULT_RULES).forEach(k => { if (s.rules[k] == null) s.rules[k] = clone(DEFAULT_RULES[k]); });
   if (!Array.isArray(s.rules.sales) || !s.rules.sales.length) s.rules.sales = clone(DEFAULT_RULES.sales);
+  /* nye spil (okt. 2026) */
+  if (!s.lotto) s.lotto = { t:{}, pot:0, max:10, round:1, last:null, hist:[] };
+  if (!s.tip) s.tip = { dl:600, floor:0, carry:0, rounds:[], hist:[] };
+  if (!s.rps) s.rps = { open:[], hist:[] };
+  if (!s.codes) s.codes = {};
+  if (!s.rec) s.rec = {};
   s.players.forEach(p => { if (!p.used) p.used = {}; });
   return s;
 }
@@ -191,6 +203,7 @@ function apply(s,a){
   upgrade(s);
   const P=s.players;
   const p = a.pi!=null && P[a.pi] ? P[a.pi] : null;
+  if (NEW_ACTIONS[a.type]) return applyNew(s, a, P, p);   /* de nye spil (okt. 2026) */
 
   switch(a.type){
     case "adminLogin": {
@@ -236,10 +249,12 @@ function apply(s,a){
       if (a.free && p.freeSpin > 0){ p.freeSpin--; return { free:true }; }
       if (p.coins < 1) return { err:"Du har ingen mønter tilbage" };
       p.coins--; if (a.game === "wheel") s.spins++;
+      if (NEWARC[a.game]) { p.tk = { g:a.game, id:rid() }; return { ok:true, tk:p.tk.id }; }
       return { ok:true };
     }
     case "score": {
       if (!p) return { err:"Ukendt spiller" };
+      if (NEWARC[a.game]) return arcadeScore(s, p, a);
       let want = a.pts || 0, capped = false;
       if (a.game && want > 0){
         const left = capLeft(s,p,a.game);
@@ -363,7 +378,7 @@ function apply(s,a){
       if (!list.some(x => x.on)) return { err:"Mindst ét spil skal være åbent" };
       s.games = DEFAULT_GAMES.map(d => {
         const x = list.find(y => y.id === d.id) || d;
-        return { id:d.id, on:!!x.on, cap:int(x.cap,0,999) };
+        return { id:d.id, on:!!x.on, cap:COIN[d.id] ? 0 : int(x.cap,0,999) };
       });
       const off = s.games.filter(g => !g.on).map(g => GAME_NAMES[g.id]);
       logIt(s, off.length ? `🎮 <b>Spillehallen opdateret</b> — lukket: ${off.join(", ")}`
@@ -440,6 +455,10 @@ function apply(s,a){
       const keepP = P.map(q => ({ name:q.name, icon:q.icon, color:q.color, admin:!!q.admin }));
       const se = (s.season||1)+1;
       const ns = fresh(keepP, se, { shop:s.shop, ex:s.ex, games:s.games, rules:s.rules });
+      /* nye spil: indstillinger og koder følger med til næste sæson */
+      ns.lotto = { t:{}, pot:0, max:(s.lotto && s.lotto.max) || 10, round:1, last:null, hist:[] };
+      ns.tip = { dl:(s.tip && s.tip.dl) || 600, floor:(s.tip && s.tip.floor) || 0, carry:0, rounds:[], hist:[] };
+      ns.rps = { open:[], hist:[] }; ns.codes = s.codes || {}; ns.rec = {};
       logIt(ns, `🏁 <b>Sæson ${se}</b> er startet`);
       Object.keys(s).forEach(k => delete s[k]);
       Object.assign(s, ns);
@@ -447,6 +466,324 @@ function apply(s,a){
     }
     default: return { err:"Ukendt handling" };
   }
+}
+
+/* =====================================================================
+   NYE SPIL (okt. 2026)
+   Flødebolle-flyveren · Over vejen · Småkage-klikkeren
+   Lotteriet · Sten, saks, papir · Salgstippet
+   ===================================================================== */
+/* Arkadespillene: serveren regner selv point ud fra resultatet og kræver den
+   billet, "spend" gav ved start — så hver betalt tur kun kan give point én gang. */
+const NEWARC = {
+  fly:    { ic:"🐦", unit:"huller",   pts:(n) => Math.floor(n / 4),   max:6, top:999,   bd:"fly" },
+  road:   { ic:"🐸", unit:"rækker",   pts:(n) => Math.floor(n / 5),   max:6, top:999,   bd:"road" },
+  cookie: { ic:"🍪", unit:"småkager", pts:(n) => Math.round(n / 500), max:6, top:20000, bd:"cookie" }
+};
+const COIN = { lotto:1, rps:1, tip:1 };   /* spil, der kun flytter mønter mellem spillerne */
+const MOVES = { sten:"✊", saks:"✌️", papir:"✋" };
+const BEATS = { sten:"saks", saks:"papir", papir:"sten" };
+
+/* Hemmeligheder (valget i sten-saks-papir og salgstip før fristen) krypteres med en
+   nøgle, der er afledt af databasens token. Den findes kun på serveren, så heller
+   ikke den, der kigger i /api/state, kan se dem. */
+const SEAL = crypto.createHash("sha256").update("slik-arenaen:" + String(TOKEN || "")).digest();
+function seal(o){
+  const iv = crypto.randomBytes(12), c = crypto.createCipheriv("aes-256-gcm", SEAL, iv);
+  const enc = Buffer.concat([c.update(JSON.stringify(o), "utf8"), c.final()]);
+  return Buffer.concat([iv, c.getAuthTag(), enc]).toString("base64");
+}
+function unseal(t){
+  try {
+    const b = Buffer.from(String(t), "base64");
+    const d = crypto.createDecipheriv("aes-256-gcm", SEAL, b.subarray(0, 12));
+    d.setAuthTag(b.subarray(12, 28));
+    return JSON.parse(Buffer.concat([d.update(b.subarray(28)), d.final()]).toString("utf8"));
+  } catch(e){ return null; }
+}
+const rid = () => crypto.randomBytes(6).toString("hex");
+const codeHash = (pi, code) => crypto.createHmac("sha256", SEAL).update(pi + ":" + code).digest("hex").slice(0, 32);
+
+/* Rigtig dansk tid — følger både sommer- og vintertid */
+const DKF = new Intl.DateTimeFormat("en-GB", { timeZone:"Europe/Copenhagen", year:"numeric", month:"2-digit",
+  day:"2-digit", hour:"2-digit", minute:"2-digit", hourCycle:"h23" });
+function dk(){
+  const o = {}; DKF.formatToParts(new Date()).forEach(x => { o[x.type] = x.value; });
+  return { d:`${o.year}-${o.month}-${o.day}`, m:((+o.hour) % 24) * 60 + (+o.minute) };
+}
+const hm = (m) => String(Math.floor(m / 60)).padStart(2, "0") + "." + String(m % 60).padStart(2, "0");
+function dayTxt(d){
+  const x = new Date(d + "T12:00:00Z");
+  return ["søn","man","tirs","ons","tors","fre","lør"][x.getUTCDay()] + " " + (+d.slice(8, 10)) + "/" + (+d.slice(5, 7));
+}
+const who = (q) => q ? `${q.icon} <b>${q.name}</b>` : "<b>?</b>";
+const andList = (a) => a.length < 2 ? a.join("") : a.slice(0, -1).join(", ") + " og " + a[a.length - 1];
+function gate(s, id){
+  if (locked(s)) return { err:"Spillene åbner "+openText(s)+" — saml mønter indtil da!" };
+  if (!gameCfg(s, id).on) return { err:GAME_NAMES[id]+" er lukket lige nu" };
+  return null;
+}
+function tipClosed(s, d, now){ now = now || dk(); return d < now.d || (d === now.d && now.m >= s.tip.dl); }
+
+/* Oprydning, der kører før hver ny handling: udløbne udfordringer får mønten
+   tilbage, og salgstip bliver afsløret, når fristen er passeret. */
+function housekeep(s){
+  let ch = false; const now = dk(), P = s.players;
+  s.rps.open = s.rps.open.filter(c => {
+    if (c.d >= now.d) return true;
+    const q = P[c.a]; if (q) q.coins += 1;
+    logIt(s, `⌛ ${who(q)}s udfordring i ✊ Sten, saks, papir udløb — mønten er givet tilbage`);
+    ch = true; return false;
+  });
+  s.tip.rounds.forEach(r => {
+    if (!r.seal || !tipClosed(s, r.d, now)) return;
+    r.tips = {};
+    Object.keys(r.seal).forEach(k => {
+      const v = unseal(r.seal[k]);
+      if (v && v.n != null) r.tips[k] = v.n;
+      else { if (P[k]) P[k].coins += 1; r.n--; r.pot--; }
+    });
+    delete r.seal; ch = true;
+    logIt(s, `📊 Tippene i Salgstippet for ${dayTxt(r.d)} er afsløret — ${r.n} tip, pulje ${r.pot} mønter`);
+  });
+  return ch;
+}
+
+function arcadeScore(s, p, a){
+  const g = NEWARC[a.game];
+  if (!p.tk || p.tk.g !== a.game || p.tk.id !== String(a.tk || "")) return { err:"Turen er allerede afsluttet" };
+  delete p.tk;
+  const n = Math.min(g.top, Math.max(0, Math.floor(Number(a.score) || 0)));
+  const raw = Math.min(g.max, Math.max(0, g.pts(n)));
+  let want = raw, capped = false;
+  const left = capLeft(s, p, a.game);
+  if (want > left){ want = left; capped = true; }
+  if (want > 0){ addUsed(p, a.game, want); addPts(p, want); }
+  if (raw >= g.max) badge(p, g.bd);
+  const old = s.rec[a.game], rec = n > 0 && (!old || n > old.v);
+  if (rec) s.rec[a.game] = { v:n, n:p.name, i:p.icon, d:dk().d };
+  logIt(s, `${who(p)} spillede ${g.ic} ${GAME_NAMES[a.game]}: ${n} ${g.unit}, +${want} point${rec ? " — ny rekord! 🏆" : ""}`);
+  return { ok:true, pts:p.pts, given:want, raw, capped, rec };
+}
+
+/* Personlig kode til sten-saks-papir: 5 forkerte forsøg låser koden resten af dagen */
+function checkCode(s, pi, code){
+  const c = s.codes[pi], today = dk().d;
+  if (!c) return { err:"Vælg først din personlige kode", needCode:true };
+  if (c.fd === today && c.f >= 5) return { err:"Koden er låst resten af dagen efter 5 forkerte forsøg. Oskar kan nulstille den", badCode:true };
+  if (codeHash(pi, String(code == null ? "" : code)) !== c.h){
+    if (c.fd !== today){ c.fd = today; c.f = 0; }
+    c.f++;
+    return { err: c.f >= 5 ? "Forkert kode — koden er nu låst resten af dagen. Oskar kan nulstille den"
+                           : "Forkert kode ("+(5 - c.f)+" forsøg tilbage i dag)", badCode:true, save:true };
+  }
+  if (c.f) c.f = 0;
+  return null;
+}
+
+const NEW_ACTIONS = { tick:1, lottoBuy:1, lottoDraw:1, lottoSave:1, rpsSetCode:1, rpsCheck:1, rpsChallenge:1,
+  rpsAnswer:1, rpsCancel:1, rpsResetCode:1, tipSet:1, tipResult:1, tipCancel:1, tipCfg:1 };
+function applyNew(s, a, P, p){
+  const hk = housekeep(s);
+  if (a.type === "tick") return hk ? { ok:true } : { err:"Intet nyt", quiet:true };
+  const r = newAction(s, a, P, p);
+  if (r && r.err && hk) r.save = true;   /* oprydningen skal gemmes, selv om handlingen fejlede */
+  return r;
+}
+
+function newAction(s, a, P, p){
+  const me = a.pi != null ? +a.pi : -1;
+  switch (a.type){
+
+    /* ---------- LOTTERIET ---------- */
+    case "lottoBuy": {
+      if (!p) return { err:"Vælg dig selv først" };
+      const g = gate(s, "lotto"); if (g) return g;
+      const L = s.lotto, n = int(a.n, 1, 100), mine = L.t[me] || 0;
+      if (mine >= L.max) return { err:"Du har allerede "+L.max+" lodder — det er maks pr. runde" };
+      if (mine + n > L.max) return { err:"Du kan højst købe "+(L.max - mine)+" lod"+(L.max - mine > 1 ? "der" : "")+" mere i denne runde" };
+      if (p.coins < n) return { err:"Du har kun "+p.coins+" mønt"+(p.coins === 1 ? "" : "er") };
+      p.coins -= n; L.t[me] = mine + n; L.pot += n;
+      logIt(s, `🎟️ ${who(p)} købte ${n} lod${n > 1 ? "der" : ""} i Lotteriet — puljen er nu ${L.pot} mønter`);
+      return { ok:true, n, mine:L.t[me], pot:L.pot };
+    }
+    case "lottoDraw": {
+      if (!isAdmin(s, a.by, a.pin)) return DENY;
+      const L = s.lotto, ids = Object.keys(L.t).filter(k => L.t[k] > 0 && P[k]);
+      const total = ids.reduce((x, k) => x + L.t[k], 0);
+      if (!total) return { err:"Der er ingen lodder i puljen endnu" };
+      let r = crypto.randomInt(total), win = ids[ids.length - 1];
+      for (const k of ids){ if (r < L.t[k]){ win = k; break; } r -= L.t[k]; }
+      const q = P[win], pot = L.pot;
+      q.coins += pot; badge(q, "lotto");
+      const res = { pi:+win, pot, tk:L.t[win], total, n:ids.length, d:dk().d, r:L.round || 1 };
+      L.last = res; L.hist.unshift(res); if (L.hist.length > 8) L.hist.pop();
+      L.t = {}; L.pot = 0; L.round = (L.round || 1) + 1;
+      logIt(s, `🎟️ ${who(q)} vandt Lotteriet med ${res.tk} af ${total} lodder og fik ${pot} mønter! 🎉`);
+      return { ok:true, ...res, name:q.name, icon:q.icon };
+    }
+    case "lottoSave": {
+      if (!isAdmin(s, a.by, a.pin)) return DENY;
+      s.lotto.max = int(a.max, 1, 100);
+      logIt(s, `🎟️ <b>Lotteriet</b>: maks ${s.lotto.max} lodder pr. person pr. runde`);
+      return { ok:true };
+    }
+
+    /* ---------- STEN, SAKS, PAPIR ---------- */
+    case "rpsSetCode": {
+      if (!p) return { err:"Vælg dig selv først" };
+      if (s.codes[me]) return { err:"Du har allerede en kode. Har du glemt den, kan Oskar nulstille den" };
+      const code = String(a.code == null ? "" : a.code).trim();
+      if (!/^\d{4}$/.test(code)) return { err:"Koden skal være 4 cifre" };
+      s.codes[me] = { h:codeHash(me, code), f:0, fd:"" };
+      logIt(s, `🔑 ${who(p)} har valgt sin kode til ✊ Sten, saks, papir`);
+      return { ok:true };
+    }
+    case "rpsCheck": {
+      if (!p) return { err:"Vælg dig selv først" };
+      const bad = checkCode(s, me, a.code); if (bad) return bad;
+      return { ok:true };
+    }
+    case "rpsChallenge": {
+      if (!p) return { err:"Vælg dig selv først" };
+      const g = gate(s, "rps"); if (g) return g;
+      const bad = checkCode(s, me, a.code); if (bad) return bad;
+      if (!MOVES[a.mv]) return { err:"Vælg sten, saks eller papir" };
+      const to = (a.to == null || a.to === "" || +a.to < 0) ? -1 : +a.to;
+      if (to === me) return { err:"Du kan ikke udfordre dig selv" };
+      if (to >= 0 && !P[to]) return { err:"Ukendt modstander" };
+      if (s.rps.open.filter(c => c.a === me).length >= 3) return { err:"Du har allerede 3 åbne udfordringer" };
+      if (p.coins < 1) return { err:"Du har ingen mønter tilbage" };
+      p.coins--;
+      const c = { id:rid(), a:me, b:to, s:seal({ mv:a.mv }), d:dk().d, at:new Date().toISOString() };
+      s.rps.open.push(c);
+      logIt(s, `✊ ${who(p)} udfordrede ${to >= 0 ? who(P[to]) : "<b>hele holdet</b>"} i Sten, saks, papir`);
+      return { ok:true, id:c.id };
+    }
+    case "rpsAnswer": {
+      if (!p) return { err:"Vælg dig selv først" };
+      const g = gate(s, "rps"); if (g) return g;
+      const c = s.rps.open.find(x => x.id === a.id);
+      if (!c) return { err:"Udfordringen findes ikke længere" };
+      if (c.a === me) return { err:"Du kan ikke svare på din egen udfordring" };
+      if (c.b !== -1 && c.b !== me) return { err:"Udfordringen er til en anden" };
+      const bad = checkCode(s, me, a.code); if (bad) return bad;
+      if (!MOVES[a.mv]) return { err:"Vælg sten, saks eller papir" };
+      if (p.coins < 1) return { err:"Du har ingen mønter tilbage" };
+      const A = P[c.a], v = unseal(c.s);
+      s.rps.open = s.rps.open.filter(x => x !== c);
+      if (!A || !v || !MOVES[v.mv]){
+        if (A) A.coins += 1;
+        return { err:"Udfordringen kunne ikke læses og er annulleret — mønten er givet tilbage", save:true };
+      }
+      p.coins--;
+      const ma = v.mv, mb = a.mv;
+      let w = -1;
+      if (ma === mb){ A.coins += 1; p.coins += 1; }
+      else if (BEATS[ma] === mb){ A.coins += 2; w = c.a; badge(A, "rps"); }
+      else { p.coins += 2; w = me; badge(p, "rps"); }
+      s.rps.hist.unshift({ a:c.a, b:me, ma, mb, w, at:new Date().toISOString() });
+      if (s.rps.hist.length > 12) s.rps.hist.pop();
+      if (w < 0) logIt(s, `✊ ${who(A)} (${MOVES[ma]}) og ${who(p)} (${MOVES[mb]}) spillede uafgjort — begge fik mønten tilbage`);
+      else if (w === me) logIt(s, `✊ ${who(p)} (${MOVES[mb]}) slog ${who(A)} (${MOVES[ma]}) og tog begge mønter`);
+      else logIt(s, `✊ ${who(A)} (${MOVES[ma]}) slog ${who(p)} (${MOVES[mb]}) og tog begge mønter`);
+      return { ok:true, ma, mb, w, you: w < 0 ? "tie" : (w === me ? "win" : "lose") };
+    }
+    case "rpsCancel": {
+      if (!p) return { err:"Vælg dig selv først" };
+      const c = s.rps.open.find(x => x.id === a.id);
+      if (!c) return { err:"Udfordringen findes ikke længere" };
+      if (c.a !== me) return { err:"Kun den, der udfordrede, kan trække udfordringen tilbage" };
+      const bad = checkCode(s, me, a.code); if (bad) return bad;
+      s.rps.open = s.rps.open.filter(x => x !== c); p.coins += 1;
+      return { ok:true };
+    }
+    case "rpsResetCode": {
+      if (!isAdmin(s, a.by, a.pin)) return DENY;
+      if (!p) return { err:"Ukendt spiller" };
+      delete s.codes[me];
+      logIt(s, `🔑 ${who(p)}s kode til Sten, saks, papir er nulstillet`);
+      return { ok:true, name:p.name };
+    }
+
+    /* ---------- SALGSTIPPET ---------- */
+    case "tipSet": {
+      if (!p) return { err:"Vælg dig selv først" };
+      if (p.admin) return { err:"Du taster holdets resultat, så du kan ikke selv tippe" };
+      const g = gate(s, "tip"); if (g) return g;
+      const T = s.tip, now = dk();
+      if (now.m >= T.dl) return { err:"Fristen kl. "+hm(T.dl)+" er overskredet — tip igen i morgen" };
+      const n = Math.round(Number(a.n));
+      if (a.n === "" || a.n == null || !isFinite(n) || n < 0 || n > 9999) return { err:"Skriv et tal mellem 0 og 9999" };
+      let r = T.rounds.find(x => x.d === now.d);
+      if (r && !r.seal) return { err:"Tippene for i dag er allerede afsløret" };
+      const floor = r ? (r.f || 0) : (T.floor || 0);
+      if (n < floor) return { err:"Tippet skal være mindst "+floor+" (bundgrænsen)" };
+      if (r && r.seal[me]){
+        const old = unseal(r.seal[me]);
+        if (!old || !a.k || String(a.k) !== old.k)
+          return { err:"Du har allerede tippet i dag. Tippet kan kun rettes fra den PC, du tippede fra" };
+        r.seal[me] = seal({ n, k:old.k });
+        return { ok:true, n, k:old.k, changed:true };
+      }
+      if (p.coins < 1) return { err:"Du har ingen mønter tilbage" };
+      if (!r){ r = { d:now.d, f:T.floor || 0, n:0, c:T.carry || 0, pot:T.carry || 0, seal:{} }; T.carry = 0; T.rounds.push(r); }
+      p.coins--; r.n++; r.pot++;
+      const k = rid();
+      r.seal[me] = seal({ n, k });
+      logIt(s, `📊 ${who(p)} har tippet på holdets salg i dag — puljen er ${r.pot} mønter`);
+      return { ok:true, n, k };
+    }
+    case "tipResult": {
+      if (!isAdmin(s, a.by, a.pin)) return DENY;
+      const T = s.tip, r = T.rounds.find(x => x.d === a.d);
+      if (!r) return { err:"Runden findes ikke længere" };
+      if (r.seal) return { err:"Fristen kl. "+hm(T.dl)+" er ikke overskredet endnu" };
+      if (a.res === "" || a.res == null || !isFinite(Number(a.res))) return { err:"Skriv holdets resultat" };
+      const res = int(a.res, 0, 9999), ids = Object.keys(r.tips || {}).filter(k => P[k]);
+      const miss = (r.f || 0) > 0 && res < r.f;
+      let win = [], best = Infinity;
+      if (!miss) ids.forEach(k => {
+        const d = Math.abs(r.tips[k] - res);
+        if (d < best){ best = d; win = [k]; } else if (d === best) win.push(k);
+      });
+      const each = win.length ? Math.floor(r.pot / win.length) : 0, rest = r.pot - each * win.length;
+      win.forEach(k => { P[k].coins += each; badge(P[k], "tip"); });
+      T.carry = (T.carry || 0) + rest;
+      T.rounds = T.rounds.filter(x => x !== r);
+      const h = { d:r.d, res, pot:r.pot, each, win:win.map(Number), tips:r.tips || {}, rest, miss, f:r.f || 0 };
+      T.hist.unshift(h); if (T.hist.length > 10) T.hist.pop();
+      const head = `📊 Salgstippet ${dayTxt(r.d)}: holdet lavede ${res} salg`;
+      const tail = rest ? ` (${rest} mønt${rest > 1 ? "er" : ""} går videre til næste pulje)` : "";
+      if (miss) logIt(s, `${head} og nåede ikke bundgrænsen på ${r.f} — puljen på ${r.pot} mønter går videre`);
+      else if (!win.length) logIt(s, `${head} — ingen tip, så puljen går videre`);
+      else if (win.length === 1) logIt(s, `${head} — ${who(P[win[0]])} tippede ${r.tips[win[0]]} og vandt ${each} mønter 🎉${tail}`);
+      else logIt(s, `${head} — ${andList(win.map(k => who(P[k])))} delte puljen og fik ${each} mønter hver${tail}`);
+      return { ok:true, ...h };
+    }
+    case "tipCancel": {
+      if (!isAdmin(s, a.by, a.pin)) return DENY;
+      const T = s.tip, r = T.rounds.find(x => x.d === a.d);
+      if (!r) return { err:"Runden findes ikke længere" };
+      const ids = Object.keys(r.seal || r.tips || {});
+      ids.forEach(k => { if (P[k]) P[k].coins += 1; });
+      T.carry = (T.carry || 0) + (r.c || 0);
+      T.rounds = T.rounds.filter(x => x !== r);
+      logIt(s, `📊 Salgstippet for ${dayTxt(r.d)} blev annulleret — alle har fået deres mønt tilbage`);
+      return { ok:true, n:ids.length };
+    }
+    case "tipCfg": {
+      if (!isAdmin(s, a.by, a.pin)) return DENY;
+      const m = /^(\d{1,2})[:.](\d{2})$/.exec(String(a.dl || "").trim());
+      if (!m) return { err:"Skriv fristen som tt:mm, fx 10:00" };
+      const dl = (+m[1]) * 60 + (+m[2]);
+      if (+m[2] > 59 || dl < 360 || dl > 1080) return { err:"Fristen skal ligge mellem kl. 06.00 og 18.00" };
+      s.tip.dl = dl; s.tip.floor = int(a.floor, 0, 9999);
+      logIt(s, `📊 <b>Salgstippet</b>: fristen er kl. ${hm(dl)}` + (s.tip.floor ? ` — man skal tippe mindst ${s.tip.floor}` : ""));
+      return { ok:true };
+    }
+  }
+  return { err:"Ukendt handling" };
 }
 
 async function read(){
@@ -473,7 +810,7 @@ export default async function handler(req,res){
       try {
         const doc = await read();
         const result = apply(doc.state, body);
-        if (result && result.err && !result.taken) return res.status(200).json({ ...doc, result });
+        if (result && result.err && !result.taken && !result.save) return res.status(200).json({ ...doc, result });
         doc.v = (doc.v||1)+1;
         await rSet(JSON.stringify(doc));
         return res.status(200).json({ v:doc.v, state:doc.state, result });
